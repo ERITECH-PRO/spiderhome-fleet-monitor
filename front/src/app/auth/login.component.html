@@ -1,0 +1,321 @@
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SPIDERHOME — LOGIN  (Centered Clean Layout)
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="login-shell">
+
+  <!-- ── FULL BLEED BACKGROUND ─────────────────────────────────────────────── -->
+  <div class="bg-image"></div>
+  <div class="bg-overlay"></div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       HEADER — minimal branding
+       ══════════════════════════════════════════════════════════════════════ -->
+  <header class="login-header">
+    <app-spiderhome-logo variant="stacked" size="lg" [showTagline]="true" textColor="#1e293b"></app-spiderhome-logo>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MAIN — CENTERED LOGIN CARD
+       ══════════════════════════════════════════════════════════════════════ -->
+  <main class="login-main">
+
+    <div class="login-card-wrap fade-up">
+      <div class="login-card">
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             VIEW: STANDARD LOGIN
+             ══════════════════════════════════════════════════════════════════ -->
+        <ng-container *ngIf="viewMode === 'login'">
+
+          <div class="card-header">
+            <h2 class="card-title">Admin Login</h2>
+            <p class="card-subtitle">Please sign in to access the admin dashboard.</p>
+          </div>
+
+          <!-- Error -->
+          <div *ngIf="errorMessage" class="err-banner" role="alert">
+            <app-icon name="warning" [size]="14" class="err-icon"></app-icon>
+            <span>{{ errorMessage }}</span>
+          </div>
+
+          <form (ngSubmit)="onSubmit()" class="card-form" autocomplete="on">
+
+            <!-- Email -->
+            <div class="field">
+              <label for="email" class="field-label">Email</label>
+              <div class="field-input-wrap">
+                <app-icon name="email" [size]="15" class="field-icon"></app-icon>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  [(ngModel)]="email"
+                  class="field-input"
+                  placeholder="Enter your email"
+                  autocomplete="email"
+                  required>
+              </div>
+            </div>
+
+            <!-- Password -->
+            <div class="field">
+              <label for="password" class="field-label">Password</label>
+              <div class="field-input-wrap">
+                <app-icon name="lock" [size]="15" class="field-icon"></app-icon>
+                <input
+                  [type]="showPassword ? 'text' : 'password'"
+                  id="password"
+                  name="password"
+                  [(ngModel)]="password"
+                  class="field-input"
+                  placeholder="Enter your password"
+                  autocomplete="current-password"
+                  required>
+                <button
+                  type="button"
+                  class="eye-btn"
+                  (click)="togglePassword()"
+                  [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'"
+                >
+                  <app-icon [name]="showPassword ? 'eye-off' : 'eye'" [size]="15"></app-icon>
+                </button>
+              </div>
+            </div>
+
+            <!-- Remember + Forgot -->
+            <div class="form-extras">
+              <label class="remember-label">
+                <input type="checkbox" class="remember-check">
+                <span>Remember me</span>
+              </label>
+              <button type="button" class="forgot-btn" (click)="openForgotPassword()">
+                Forgot password?
+              </button>
+            </div>
+
+            <!-- Submit -->
+            <button
+              type="submit"
+              class="submit-btn"
+              [disabled]="isLoading"
+              [class.loading]="isLoading"
+              id="btn-login"
+            >
+              <svg *ngIf="isLoading" class="spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <span>{{ isLoading ? 'Signing in…' : 'Sign In' }}</span>
+            </button>
+
+          </form>
+
+          <!-- Secure badge -->
+          <div class="secure-badge">
+            <app-icon name="lock" [size]="13" class="secure-icon"></app-icon>
+            <div class="secure-text">
+              <span class="secure-title">Secure access</span>
+              <span class="secure-sub">All data is encrypted and protected</span>
+            </div>
+          </div>
+
+        </ng-container>
+
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             VIEW: FORGOT — STEP 1 (email)
+             ══════════════════════════════════════════════════════════════════ -->
+        <ng-container *ngIf="viewMode === 'forgot_email'">
+
+          <div class="card-header">
+            <h2 class="card-title">Reset Password</h2>
+            <p class="card-subtitle">Enter your email to receive a 6-digit verification code.</p>
+          </div>
+
+          <div *ngIf="forgotErrorMessage" class="err-banner" role="alert">
+            <app-icon name="warning" [size]="14" class="err-icon"></app-icon>
+            <span>{{ forgotErrorMessage }}</span>
+          </div>
+
+          <form (ngSubmit)="onRequestOtp()" class="card-form">
+            <div class="field">
+              <label for="forgotEmail" class="field-label">Email address</label>
+              <div class="field-input-wrap">
+                <app-icon name="email" [size]="15" class="field-icon"></app-icon>
+                <input type="email" id="forgotEmail" name="forgotEmail"
+                  [(ngModel)]="forgotEmail" class="field-input"
+                  placeholder="admin@spiderhome.com"
+                  autocomplete="email" required>
+              </div>
+            </div>
+
+            <button type="submit" class="submit-btn" [disabled]="isForgotLoading" [class.loading]="isForgotLoading">
+              <svg *ngIf="isForgotLoading" class="spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <span>{{ isForgotLoading ? 'Sending code…' : 'Send verification code' }}</span>
+            </button>
+
+            <div class="back-row">
+              <button type="button" class="back-link" (click)="backToLogin()">
+                <app-icon name="arrow-left" [size]="13"></app-icon> Back to sign in
+              </button>
+            </div>
+          </form>
+
+        </ng-container>
+
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             VIEW: FORGOT — STEP 2 (OTP)
+             ══════════════════════════════════════════════════════════════════ -->
+        <ng-container *ngIf="viewMode === 'forgot_otp'">
+
+          <div class="card-header">
+            <h2 class="card-title">Enter Code</h2>
+            <p class="card-subtitle">A 6-digit code was sent to <strong>{{ forgotEmail }}</strong></p>
+          </div>
+
+          <div *ngIf="forgotSuccessMessage" class="ok-banner" role="status">
+            <app-icon name="check" [size]="14" class="ok-icon"></app-icon>
+            <span>{{ forgotSuccessMessage }}</span>
+          </div>
+          <div *ngIf="forgotErrorMessage" class="err-banner" role="alert">
+            <app-icon name="warning" [size]="14" class="err-icon"></app-icon>
+            <span>{{ forgotErrorMessage }}</span>
+          </div>
+
+          <form (ngSubmit)="onVerifyOtp()" class="card-form">
+            <div class="field">
+              <label for="otpCode" class="field-label">6-digit code</label>
+              <div class="field-input-wrap">
+                <app-icon name="lock" [size]="15" class="field-icon"></app-icon>
+                <input type="text" id="otpCode" name="otpCode"
+                  [(ngModel)]="otpCode" class="field-input otp-input"
+                  placeholder="123456" maxlength="6"
+                  inputmode="numeric" autocomplete="one-time-code" required>
+              </div>
+              <div class="otp-hint-row">
+                <span class="otp-hint">Valid for 15 minutes</span>
+                <button type="button" class="resend-btn"
+                  [disabled]="resendCountdown > 0 || isForgotLoading"
+                  (click)="onResendOtp()">
+                  {{ resendCountdown > 0 ? ('Resend in ' + resendCountdown + 's') : 'Resend code' }}
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" class="submit-btn" [disabled]="isForgotLoading" [class.loading]="isForgotLoading">
+              <svg *ngIf="isForgotLoading" class="spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <span>{{ isForgotLoading ? 'Verifying…' : 'Verify code' }}</span>
+            </button>
+
+            <div class="back-row">
+              <button type="button" class="back-link" (click)="goToForgotEmail()">
+                <app-icon name="arrow-left" [size]="13"></app-icon> Change email
+              </button>
+            </div>
+          </form>
+
+        </ng-container>
+
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             VIEW: FORGOT — STEP 3 (new password)
+             ══════════════════════════════════════════════════════════════════ -->
+        <ng-container *ngIf="viewMode === 'forgot_password'">
+
+          <div class="card-header">
+            <h2 class="card-title">New Password</h2>
+            <p class="card-subtitle">Set a new password (min. 6 characters).</p>
+          </div>
+
+          <div *ngIf="forgotSuccessMessage" class="ok-banner" role="status">
+            <app-icon name="check" [size]="14" class="ok-icon"></app-icon>
+            <span>{{ forgotSuccessMessage }}</span>
+          </div>
+          <div *ngIf="forgotErrorMessage" class="err-banner" role="alert">
+            <app-icon name="warning" [size]="14" class="err-icon"></app-icon>
+            <span>{{ forgotErrorMessage }}</span>
+          </div>
+
+          <form (ngSubmit)="onResetPassword()" class="card-form">
+            <div class="field">
+              <label for="newPassword" class="field-label">New password</label>
+              <div class="field-input-wrap">
+                <app-icon name="lock" [size]="15" class="field-icon"></app-icon>
+                <input type="password" id="newPassword" name="newPassword"
+                  [(ngModel)]="newPassword" class="field-input"
+                  placeholder="••••••••••••"
+                  autocomplete="new-password" required>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="newPasswordConfirm" class="field-label">Confirm password</label>
+              <div class="field-input-wrap">
+                <app-icon name="lock" [size]="15" class="field-icon"></app-icon>
+                <input type="password" id="newPasswordConfirm" name="newPasswordConfirm"
+                  [(ngModel)]="newPasswordConfirm" class="field-input"
+                  placeholder="••••••••••••"
+                  autocomplete="new-password" required>
+              </div>
+            </div>
+
+            <!-- Strength bar -->
+            <div class="pw-bar">
+              <span class="pw-seg" [class.active]="newPassword.length >= 1"></span>
+              <span class="pw-seg" [class.active]="newPassword.length >= 3"></span>
+              <span class="pw-seg" [class.active]="newPassword.length >= 6"></span>
+              <span class="pw-seg" [class.active]="newPassword.length >= 10"></span>
+              <span class="pw-label">{{ newPassword.length >= 10 ? 'Strong' : newPassword.length >= 6 ? 'Good' : newPassword.length >= 3 ? 'Weak' : 'Too short' }}</span>
+            </div>
+
+            <button type="submit" class="submit-btn" [disabled]="isForgotLoading" [class.loading]="isForgotLoading">
+              <svg *ngIf="isForgotLoading" class="spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <span>{{ isForgotLoading ? 'Saving…' : 'Save new password' }}</span>
+            </button>
+
+            <div class="back-row">
+              <button type="button" class="back-link" (click)="backToLogin()">
+                <app-icon name="arrow-left" [size]="13"></app-icon> Cancel
+              </button>
+            </div>
+          </form>
+
+        </ng-container>
+
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             VIEW: SUCCESS
+             ══════════════════════════════════════════════════════════════════ -->
+        <ng-container *ngIf="viewMode === 'forgot_success'">
+
+          <div class="success-view">
+            <div class="success-ring">
+              <app-icon name="check" [size]="26" class="success-check"></app-icon>
+            </div>
+            <h2 class="card-title">Password reset!</h2>
+            <p class="card-subtitle">Your password has been updated. You can now sign in.</p>
+
+            <button type="button" class="submit-btn" style="margin-top:1.25rem" (click)="backToLogin()">
+              Sign in now
+            </button>
+          </div>
+
+        </ng-container>
+
+      </div>
+    </div>
+    <!-- /login-card-wrap -->
+
+  </main>
+
+</div>

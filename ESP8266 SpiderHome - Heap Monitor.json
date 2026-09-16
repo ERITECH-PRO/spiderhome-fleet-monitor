@@ -1,0 +1,483 @@
+{
+  "name": "ESP8266 SpiderHome - Heap Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "heap-monitor",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "07bede65-a3bf-41d9-b8fe-7a51991d438e",
+      "name": "Webhook - Heap Monitor",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        1312,
+        1024
+      ],
+      "webhookId": "27bbf90b-89f8-4b53-86cc-90e861cbcf2b",
+      "onError": "continueRegularOutput",
+      "notes": "Réception des données heap ESP8266. Répond 200 OK immédiatement."
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nif (!body || typeof body !== 'object') {\n  throw new Error('Payload invalide: body manquant');\n}\n\nconst type = String(body.type || 'maintenance_preventive');\nconst requireField = (field) => {\n  if (body[field] === undefined || body[field] === null || body[field] === '') {\n    throw new Error('Payload invalide: champ manquant ' + field);\n  }\n};\n\nif (type === 'module_install') {\n  for (const field of ['device', 'device_name', 'firmware', 'mac', 'supla_server', 'email']) {\n    requireField(field);\n  }\n\n  const sanitized = {\n    type,\n    reason: body.reason || 'client_consent',\n    device: String(body.device).trim(),\n    device_name: String(body.device_name).trim(),\n    firmware: String(body.firmware).trim(),\n    mac: String(body.mac).trim(),\n    supla_server: String(body.supla_server).trim(),\n    email: String(body.email).trim(),\n    uptime_ms: Number(body.uptime_ms || body.uptime || 0),\n  };\n\n  return [{ json: { body: sanitized } }];\n}\n\nfor (const field of ['device', 'heap']) {\n  requireField(field);\n}\n\nif (isNaN(Number(body.heap))) {\n  throw new Error('Payload invalide: heap doit etre un nombre');\n}\n\nconst uptime = body.uptime_ms !== undefined ? body.uptime_ms : (body.uptime !== undefined ? body.uptime : 0);\nif (uptime !== undefined && isNaN(Number(uptime))) {\n  throw new Error('Payload invalide: uptime doit etre un nombre');\n}\n\nconst sanitized = {\n  type,\n  reason: body.reason || 'heap_monitor',\n  device: String(body.device).trim(),\n  heap: Number(body.heap),\n  heap_kb: body.heap_kb !== undefined ? Number(body.heap_kb) : Math.round((Number(body.heap) / 1024) * 100) / 100,\n  threshold: body.threshold !== undefined ? Number(body.threshold) : null,\n  uptime: Number(uptime) || 0,\n  event: body.event || body.reason || 'status',\n  status: body.status || null,\n  max_block: (body.max_block !== undefined && body.max_block !== null) ? Number(body.max_block) : null,\n  frag_pct: (body.frag_pct !== undefined && body.frag_pct !== null) ? Number(body.frag_pct) : null\n};\n\nreturn [{ json: { body: sanitized } }];"
+      },
+      "id": "d66f8d17-d34f-4f36-9366-85ee6aa00e42",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        1024
+      ],
+      "notes": "Vérifie la présence des champs obligatoires. Lève une exception si invalide (arrêt du workflow)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "dev-spiderhome",
+              "leftValue": "={{ $json.body.device }}",
+              "rightValue": "^(SpiderRoll_[1-8]X(?:_[A-F0-9a-f]{6})?|Spider_Duo(?:_\\d+|_[A-F0-9a-f]{6})?|Spider(?:Switch|_S[0-9A-Za-z_]*|_1R5|_S5)[A-Za-z0-9_]*_[A-F0-9a-f]{6}|SH-1R-[A-Za-z0-9_-]+_[A-F0-9a-f]{6})$",
+              "operator": {
+                "type": "string",
+                "operation": "regex",
+                "name": "filter.operator.regex"
+              }
+            },
+            {
+              "id": "dev-legacy",
+              "leftValue": "={{ $json.body.device }}",
+              "rightValue": "^Spider_Duo_\\d+$",
+              "operator": {
+                "type": "string",
+                "operation": "regex",
+                "name": "filter.operator.regex"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "2bc2208d-1d22-4010-8ed2-c721584af6c5",
+      "name": "Check Device Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        1024
+      ],
+      "notes": "TRUE [0] = device reconnu SpiderHome / SH. FALSE [1] = device inconnu -> arret"
+    },
+    {
+      "parameters": {},
+      "id": "ac9da8cd-ec26-4e14-acc0-f4ab439033f8",
+      "name": "Unknown Device - Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1664,
+        1280
+      ],
+      "notes": "Device non reconnu. Workflow arrêté sans erreur."
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Validate Payload').first().json.body;\nconst type = String(body.type || 'maintenance_preventive');\nconst timestamp = new Date().toISOString();\nconst sq = String.fromCharCode(39);\nconst esc = (value) => String(value ?? '').replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\");\n\nif (type === 'module_install') {\n  const device = String(body.device);\n  const deviceName = String(body.device_name || '');\n  const firmware = String(body.firmware || '');\n  const mac = String(body.mac || '');\n  const suplaServer = String(body.supla_server || '');\n  const email = String(body.email || '');\n  const uptime = Number(body.uptime_ms || 0);\n\n  const sqlCreateTable = \"CREATE TABLE IF NOT EXISTS heap_monitoring.module_installs (\" +\n    \"id INT AUTO_INCREMENT PRIMARY KEY,\" +\n    \"timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\" +\n    \"device VARCHAR(64) NOT NULL,\" +\n    \"device_name VARCHAR(64),\" +\n    \"firmware VARCHAR(32),\" +\n    \"mac VARCHAR(32),\" +\n    \"supla_server VARCHAR(128),\" +\n    \"email VARCHAR(191),\" +\n    \"uptime_ms BIGINT,\" +\n    \"reason VARCHAR(64),\" +\n    \"UNIQUE KEY uniq_device_mac (device, mac),\" +\n    \"KEY idx_module_installs_timestamp (timestamp),\" +\n    \"KEY idx_module_installs_email (email)\" +\n    \")\";\n\n  const sqlInsert = \"INSERT INTO heap_monitoring.module_installs \" +\n    \"(device, device_name, firmware, mac, supla_server, email, uptime_ms, reason) VALUES (\" +\n    sq + esc(device) + sq + \",\" +\n    sq + esc(deviceName) + sq + \",\" +\n    sq + esc(firmware) + sq + \",\" +\n    sq + esc(mac) + sq + \",\" +\n    sq + esc(suplaServer) + sq + \",\" +\n    sq + esc(email) + sq + \",\" +\n    uptime + \",\" + sq + esc(body.reason || 'client_consent') + sq + \") \" +\n    \"ON DUPLICATE KEY UPDATE timestamp=CURRENT_TIMESTAMP, device_name=VALUES(device_name), firmware=VALUES(firmware), supla_server=VALUES(supla_server), email=VALUES(email), uptime_ms=VALUES(uptime_ms), reason=VALUES(reason)\";\n\n  return [{ json: {\n    type,\n    device,\n    device_name: deviceName,\n    firmware,\n    mac,\n    supla_server: suplaServer,\n    email,\n    uptime,\n    event: 'module_install',\n    level: 'INFO',\n    timestamp,\n    telegramMsg: '[INSTALL] ' + device + ' - fiche installation recue\\n' +\n      'Module  : ' + deviceName + '\\n' +\n      'MAC     : ' + mac + '\\n' +\n      'SUPLA   : ' + suplaServer + '\\n' +\n      'Email   : ' + email + '\\n' +\n      'Version : ' + firmware + '\\n' +\n      'Heure   : ' + timestamp,\n    alert: false,\n    sqlCreateTable,\n    sqlInsert,\n  } }];\n}\n\nconst heap = Number(body.heap);\nconst event = String(body.event || 'status');\nconst device = String(body.device);\nconst uptime = Number(body.uptime) || 0;\nconst max_block = (body.max_block !== undefined && body.max_block !== null) ? Number(body.max_block) : null;\nconst frag_pct = (body.frag_pct !== undefined && body.frag_pct !== null) ? Number(body.frag_pct) : null;\n\nconst totalSec = Math.floor(uptime / 1000);\nconst hh = Math.floor(totalSec / 3600);\nconst mm = Math.floor((totalSec % 3600) / 60);\nconst ss = totalSec % 60;\nconst uptimeStr = hh + ':' + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');\n\nlet heap_effective = heap;\nlet note = '';\nlet level;\n\nif (heap < 2500) {\n  level = 'FATAL';\n  note = 'heap brut < 2500B - OOM imminent';\n} else if (event === 'boot' || event === 'cloud-ready') {\n  level = 'INFO';\n  note = 'event ' + event + ' - log informatif';\n} else if (event === 'status') {\n  heap_effective = heap + 2500;\n  note = 'mesure HTTP corrigee +2500B';\n  if (heap_effective >= 4500) level = 'INFO';\n  else if (heap_effective >= 3500) level = 'WARNING';\n  else if (heap_effective >= 3000) level = 'CRITICAL';\n  else level = 'FATAL';\n} else {\n  if (heap >= 4500) level = 'INFO';\n  else if (heap >= 3500) level = 'WARNING';\n  else if (heap >= 3000) level = 'CRITICAL';\n  else level = 'FATAL';\n}\n\nconst requestedStatus = String(body.status || '').toUpperCase();\nconst requestedReason = String(body.reason || '').toLowerCase();\nif (requestedStatus === 'FATAL') {\n  level = 'FATAL';\n  note = note ? note + ' / statut firmware FATAL' : 'statut firmware FATAL';\n} else if (requestedStatus === 'CRITICAL' || requestedReason === 'heap_critical') {\n  if (level !== 'FATAL') level = 'CRITICAL';\n  note = note ? note + ' / alerte firmware memoire critique' : 'alerte firmware memoire critique';\n} else if (requestedStatus === 'WARNING' && level === 'INFO') {\n  level = 'WARNING';\n  note = note ? note + ' / statut firmware WARNING' : 'statut firmware WARNING';\n}\n\nconst heap_kb = Math.round((heap / 1024) * 100) / 100;\nconst heap_eff_kb = Math.round((heap_effective / 1024) * 100) / 100;\n\nlet msgHeader;\nif (level === 'INFO') msgHeader = '[INFO] ' + device + ' - heap ' + heap_kb + ' KB (' + event + ') - OK';\nelse if (level === 'WARNING') msgHeader = '[WARN] ' + device + ' - heap bas ' + heap_kb + ' KB - surveiller';\nelse if (level === 'CRITICAL') msgHeader = '[CRIT] ' + device + ' - heap ' + heap_kb + ' KB - sous seuil PROD';\nelse msgHeader = '[FATAL] ' + device + ' - heap ' + heap + ' B - RISQUE CRASH IMMEDIAT';\n\nconst msgDetails = '\\nModule  : ' + device +\n  '\\nHeap    : ' + heap + ' B (' + heap_kb + ' KB)' +\n  (heap_effective !== heap ? '\\nEffectif: ' + heap_effective + ' B (' + heap_eff_kb + ' KB)' : '') +\n  '\\nMax bloc: ' + (max_block !== null ? max_block + ' B' : 'N/A') +\n  '\\nFrag    : ' + (frag_pct !== null ? frag_pct + '%' : 'N/A') +\n  '\\nEvent   : ' + event +\n  '\\nUptime  : ' + uptimeStr +\n  '\\nNiveau  : ' + level +\n  (note ? '\\nNote    : ' + note : '') +\n  '\\nHeure   : ' + timestamp;\n\nconst telegramMsg = msgHeader + '\\n' + msgDetails;\nconst maxBlockSql = max_block !== null ? max_block : 'NULL';\nconst fragPctSql = frag_pct !== null ? frag_pct : 'NULL';\nconst noteSql = note ? sq + esc(note) + sq : 'NULL';\n\nconst sqlCreateTable = \"CREATE TABLE IF NOT EXISTS heap_monitoring.heap_logs (id INT AUTO_INCREMENT PRIMARY KEY, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, device VARCHAR(64), heap INT, heap_kb FLOAT, heap_effective INT, max_block INT, frag_pct TINYINT UNSIGNED, uptime BIGINT, event VARCHAR(32), level ENUM('INFO','WARNING','CRITICAL','FATAL'), note VARCHAR(128))\";\nconst sqlInsert = 'INSERT INTO heap_monitoring.heap_logs (device, heap, heap_kb, heap_effective, max_block, frag_pct, uptime, event, level, note) VALUES (' +\n  sq + esc(device) + sq + ', ' + heap + ', ' + heap_kb + ', ' + heap_effective + ', ' +\n  maxBlockSql + ', ' + fragPctSql + ', ' + uptime + ', ' +\n  sq + esc(event) + sq + ', ' + sq + level + sq + ', ' + noteSql + ')';\n\nreturn [{ json: {\n  type, alert: ['WARNING','CRITICAL','FATAL'].includes(level), device, heap, heap_kb, heap_effective, heap_eff_kb,\n  max_block, frag_pct, uptime, uptimeStr,\n  event, level, note, timestamp, telegramMsg, sqlCreateTable, sqlInsert\n} }];"
+      },
+      "id": "5f6e1374-953c-4c73-8969-bb2fc8915f06",
+      "name": "Normalize & Compute Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        880
+      ],
+      "notes": "Seuils: >8000=OK, 6000-8000=WARNING, <6000=CRITICAL\nheap_kb arrondi 2 décimales."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $('Normalize & Compute Status').first().json.sqlCreateTable }}",
+        "options": {}
+      },
+      "id": "4f368b9f-6041-4d98-963d-4e22db3de6f3",
+      "name": "MySQL - Create Table",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        2192,
+        880
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "mUMGfGvbaHlDCFLh",
+          "name": "MySQL heal_logs"
+        }
+      },
+      "notes": "Création idempotente de la table. Prérequis: base heap_monitoring déjà créée sur le serveur MySQL."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $('Normalize & Compute Status').first().json.sqlInsert }}",
+        "options": {}
+      },
+      "id": "83c6c44d-e5de-4e6c-b2b9-b23175c47604",
+      "name": "MySQL - Insert Log",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        2416,
+        880
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "mUMGfGvbaHlDCFLh",
+          "name": "MySQL heal_logs"
+        }
+      },
+      "notes": "INSERT pour tous les statuts (OK, WARNING, CRITICAL). Référence directe au nœud Normalize pour préserver les données après Create Table."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "alert-event",
+              "leftValue": "={{ $('Normalize & Compute Status').first().json.alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a637d72c-9fed-4e13-878e-b0e103a9f731",
+      "name": "IF Status Critical",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2256,
+        1104
+      ],
+      "notes": "TRUE [0] → alerte Telegram\nFALSE [1] → fin du workflow (OK ou WARNING, déjà loggé en DB)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst data = $('Normalize & Compute Status').first().json;\nconst device = data.device;\nconst level = data.level;\nconst now = Date.now();\n\n// FATAL : alerte inconditionnelle - bypass anti-spam\nif (level === 'FATAL') {\n  return [{ json: { ...data, canSend: true } }];\n}\n\n// Fenetres anti-spam par niveau\nconst windowWarning = 30 * 60 * 1000;\nconst windowCritical = 10 * 60 * 1000;\nconst windowMs = level === 'WARNING' ? windowWarning : windowCritical;\n\nconst lastAlertKey = 'lastAlert_' + level + '_' + device;\nconst lastAlert = staticData[lastAlertKey] || 0;\n\nif (now - lastAlert < windowMs) {\n  const waitSec = Math.round((windowMs - (now - lastAlert)) / 1000);\n  return [{ json: { ...data, canSend: false, blockedSec: waitSec } }];\n}\n\nstaticData[lastAlertKey] = now;\nreturn [{ json: { ...data, canSend: true } }];"
+      },
+      "id": "704ba80e-2c52-43d5-85f6-bb44447ad393",
+      "name": "Anti-spam Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2544,
+        1088
+      ],
+      "notes": "Anti-spam: max 1 alerte / device / 10 min.\nUtilise staticData global pour persister les timestamps entre exécutions."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "can-send",
+              "leftValue": "={{ $json.canSend }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bdd0cc50-0c8b-4e3b-92f5-4fc05165bf47",
+      "name": "IF Can Send Alert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2752,
+        1088
+      ],
+      "notes": "TRUE [0] → envoi Telegram\nFALSE [1] → alerte bloquée (anti-spam)"
+    },
+    {
+      "parameters": {
+        "chatId": "6088915350",
+        "text": "={{ $json.telegramMsg }}",
+        "additionalFields": {
+          "parse_mode": "None"
+        }
+      },
+      "id": "bb929ad7-3cda-486e-910a-16151a5a4187",
+      "name": "Telegram - Alert CRITICAL",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3072,
+        1072
+      ],
+      "webhookId": "cef2771f-3da7-4505-b28e-892b9f89231a",
+      "credentials": {
+        "telegramApi": {
+          "id": "cfIH9TTtvnnM5EWt",
+          "name": "Assistant-IA"
+        }
+      },
+      "notes": "⚠️ Configurer: credential Telegram API + chatId\nMessage formaté avec toutes les infos du module."
+    },
+    {
+      "parameters": {},
+      "id": "899c258d-4006-47fd-9bcb-fbe55c5e8b00",
+      "name": "Alert Spam Blocked",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2768,
+        1376
+      ],
+      "notes": "Alerte bloquée par l'anti-spam (< 10 min depuis la dernière alerte pour ce device)."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({received: true, type: $('Normalize & Compute Status').first().json.type, level: $('Normalize & Compute Status').first().json.level, device: $('Normalize & Compute Status').first().json.device}) }}",
+        "options": {}
+      },
+      "id": "730adae9-f46d-4226-a39a-fbbcc35500c3",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2048,
+        1104
+      ]
+    }
+  ],
+  "pinData": {
+    "Webhook - Heap Monitor": [
+      {
+        "json": {
+          "headers": {
+            "host": "31.97.177.87:5678",
+            "user-agent": "curl/8.5.0",
+            "accept": "*/*",
+            "content-type": "application/json",
+            "content-length": "78"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "device": "SpiderRoll_4X",
+            "heap": 5800,
+            "event": "curl-test",
+            "status": "CRITICAL"
+          },
+          "webhookUrl": "https://ia-agent.eritech.pro/webhook/heap-monitor",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      },
+      {
+        "json": {
+          "headers": {
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "type": "module_install",
+            "reason": "client_consent",
+            "device": "SH-1R-PFC_A6D404",
+            "device_name": "SH-1R-PFC",
+            "firmware": "V1.2.6",
+            "mac": "84:F3:EB:A6:D4:04",
+            "supla_server": "svr154.supla.org",
+            "email": "admin@eritech.pro",
+            "uptime_ms": 6438
+          },
+          "webhookUrl": "https://ia-agent.eritech.pro/webhook/heap-monitor",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook - Heap Monitor": {
+      "main": [
+        [
+          {
+            "node": "Validate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Payload": {
+      "main": [
+        [
+          {
+            "node": "Check Device Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Device Valid": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Compute Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown Device - Stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Compute Status": {
+      "main": [
+        [
+          {
+            "node": "MySQL - Create Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MySQL - Create Table": {
+      "main": [
+        [
+          {
+            "node": "MySQL - Insert Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Status Critical": {
+      "main": [
+        [
+          {
+            "node": "Anti-spam Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anti-spam Check": {
+      "main": [
+        [
+          {
+            "node": "IF Can Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Can Send Alert": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Alert CRITICAL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Spam Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MySQL - Insert Log": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "IF Status Critical",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Europe/Paris",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "edbb1484-fb2f-4a8d-b2ae-50493602fb30",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fc3816bda21b621f066e9a448d8eec58009d35b778bc5161b2959b9b1ef21b95"
+  },
+  "id": "Up6GHoUYUBZIDO3c",
+  "tags": []
+}

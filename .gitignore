@@ -1,0 +1,43 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+.DS_Store
+coverage/
+dist/
+.idea/
+*.local
+
+# Secrets et données sensibles — NE JAMAIS COMMITER
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+
+# Laravel Backend
+back/.env
+back/vendor/
+back/storage/*.key
+back/bootstrap/cache/
+
+# Angular Frontend
+front/dist/
+front/.angular/cache/
+
+# Fichiers temporaires
+*.tmp
+*.bak
+*.swp
+scratch/
+
+# Données de production / passwords
+password
+*.sql
+db_dump*.sql
+
+# Environnement Docker (secrets)
+.env.docker
+!.env.docker.example

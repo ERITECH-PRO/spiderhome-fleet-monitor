@@ -1,0 +1,547 @@
+<!-- ════════════════════════════════════════════════════════════════════════
+     HEADER / TOPBAR
+════════════════════════════════════════════════════════════════════════ -->
+<header class="fade-up">
+  <div class="topbar">
+    <div class="topbar-content">
+      <div class="topbar-brand">
+        <span class="eyebrow">
+          <span class="eyebrow-dot"></span>
+          Supervision de Flotte IoT
+        </span>
+        <h1>SpiderHome Fleet Monitor</h1>
+        <p class="subtitle">Tableau de bord de monitoring, télémétrie et gestion des interventions</p>
+      </div>
+
+      <div class="topbar-meta">
+        <div class="meta-item">
+          <span class="meta-label">Dernière MàJ</span>
+          <span class="meta-value mono">{{ lastUpdated | date:'HH:mm:ss' }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Serveur API</span>
+          <span class="badge" [class]="'badge-' + apiStatus">
+            <span class="dot" [class]="'dot-' + apiStatus"></span>
+            {{ apiStatusText }}
+          </span>
+        </div>
+        <app-button
+          variant="icon"
+          size="md"
+          iconName="refresh"
+          [isLoading]="loading"
+          [disabled]="loading"
+          ariaLabel="Rafraîchir les données du dashboard"
+          tooltip="Rafraîchir les données"
+          (btnClick)="refreshAll()"
+        >
+        </app-button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     1. COMPTEURS PRINCIPAUX (KPIs)
+════════════════════════════════════════════════════════════════════════ -->
+<section class="kpi-strip fade-up" style="animation-delay:0.06s">
+
+  <!-- KPI 1 : Clients Actifs -->
+  <article class="kpi-card tone-info">
+    <div class="kpi-top">
+      <app-icon name="customers" [size]="20" class="kpi-svg"></app-icon>
+      <span class="kpi-label">Clients Actifs</span>
+    </div>
+    <div class="kpi-value-wrap">
+      <div class="kpi-value mono" *ngIf="!loading">{{ counters.active_customers }}</div>
+      <div class="skeleton" *ngIf="loading" style="height: 2.2rem; width: 50%;"></div>
+    </div>
+    <div class="kpi-hint">
+      Sur <strong>{{ counters.total_customers }}</strong> client(s) enregistrés au total
+    </div>
+    <div class="kpi-sub-badges">
+      <span class="sub-chip chip-ok">Actifs: {{ counters.active_customers }}</span>
+      <span class="sub-chip chip-neutral" *ngIf="counters.total_customers - counters.active_customers > 0">
+        Inactifs: {{ counters.total_customers - counters.active_customers }}
+      </span>
+    </div>
+  </article>
+
+  <!-- KPI 2 : Modules par Statut -->
+  <article class="kpi-card" [class.tone-crit]="counters.modules_status.offline > 0 || counters.modules_status.alert > 0" [class.tone-ok]="counters.modules_status.offline === 0 && counters.modules_status.alert === 0">
+    <div class="kpi-top">
+      <app-icon name="signal" [size]="20" class="kpi-svg"></app-icon>
+      <span class="kpi-label">Parc de Modules</span>
+    </div>
+    <div class="kpi-value-wrap">
+      <div class="kpi-value mono" *ngIf="!loading">{{ counters.modules_status.total }}</div>
+      <div class="skeleton" *ngIf="loading" style="height: 2.2rem; width: 50%;"></div>
+    </div>
+    <div class="kpi-sub-badges wrap">
+      <span class="sub-chip chip-ok" title="En ligne">🟢 {{ counters.modules_status.online }} en ligne</span>
+      <span class="sub-chip chip-crit" *ngIf="counters.modules_status.offline > 0" title="Hors ligne">🔴 {{ counters.modules_status.offline }} hors ligne</span>
+      <span class="sub-chip chip-warn" *ngIf="counters.modules_status.alert > 0" title="Alerte">🟡 {{ counters.modules_status.alert }} alerte</span>
+      <span class="sub-chip chip-neutral" *ngIf="counters.modules_status.retired > 0" title="Retiré">⚪ {{ counters.modules_status.retired }} retiré</span>
+    </div>
+  </article>
+
+  <!-- KPI 3 : Demandes d'Intervention -->
+  <article class="kpi-card tone-warn">
+    <div class="kpi-top">
+      <app-icon name="cog" [size]="20" class="kpi-svg"></app-icon>
+      <span class="kpi-label">Interventions</span>
+    </div>
+    <div class="kpi-value-wrap">
+      <div class="kpi-value mono" *ngIf="!loading">{{ counters.interventions.total }}</div>
+      <div class="skeleton" *ngIf="loading" style="height: 2.2rem; width: 50%;"></div>
+    </div>
+    <div class="kpi-sub-badges wrap">
+      <span class="sub-chip chip-crit" title="Nouvelles demandes non traitées">
+        Nouvelles: {{ counters.interventions.nouvelle }}
+      </span>
+      <span class="sub-chip chip-warn" title="Demandes en cours d'analyse">
+        En analyse: {{ counters.interventions.en_analyse }}
+      </span>
+      <span class="sub-chip chip-info" title="Interventions planifiées">
+        Planifiées: {{ counters.interventions.planifiee }}
+      </span>
+    </div>
+  </article>
+
+  <!-- KPI 4 : État de Santé Global Calculé -->
+  <article class="kpi-card" [class.tone-crit]="counters.health_summary.critique > 0" [class.tone-warn]="counters.health_summary.critique === 0 && counters.health_summary.surveillance > 0" [class.tone-ok]="counters.health_summary.critique === 0 && counters.health_summary.surveillance === 0">
+    <div class="kpi-top">
+      <app-icon name="heart-pulse" [size]="20" class="kpi-svg"></app-icon>
+      <span class="kpi-label">Santé Calculée</span>
+    </div>
+    <div class="kpi-value-wrap">
+      <div class="kpi-value" *ngIf="!loading">
+        <span *ngIf="counters.health_summary.critique > 0" class="text-crit">{{ counters.health_summary.critique }} Critique</span>
+        <span *ngIf="counters.health_summary.critique === 0 && counters.health_summary.surveillance > 0" class="text-warn">{{ counters.health_summary.surveillance }} Vigie</span>
+        <span *ngIf="counters.health_summary.critique === 0 && counters.health_summary.surveillance === 0" class="text-ok">100% Sain</span>
+      </div>
+      <div class="skeleton" *ngIf="loading" style="height: 2.2rem; width: 50%;"></div>
+    </div>
+    <div class="kpi-sub-badges">
+      <span class="sub-chip chip-ok" title="Sain : Heap > 20KB & pas d'alerte">🟢 {{ counters.health_summary.sain }} Sain</span>
+      <span class="sub-chip chip-warn" title="Surveillance : Heap 10-20KB ou alerte">🟡 {{ counters.health_summary.surveillance }} Vigilance</span>
+      <span class="sub-chip chip-crit" title="Critique : Heap < 10KB ou déconnecté">🔴 {{ counters.health_summary.critique }} Critique</span>
+    </div>
+  </article>
+
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     2. ALERTES RÉCENTES (7 Derniers Jours)
+════════════════════════════════════════════════════════════════════════ -->
+<section class="alert-strip fade-up" style="animation-delay:0.1s">
+  <div class="card alert-section-card">
+    <div class="card-header alert-header-flex">
+      <div class="alert-title-wrap">
+        <h2>🚨 Alertes Récentes (7 Derniers Jours)</h2>
+        <span class="card-hint">Supervision temps réel, acquittement d'incidents et filtrage par module</span>
+      </div>
+
+      <!-- Filtres d'état des alertes -->
+      <div class="alert-filter-chips">
+        <button
+          type="button"
+          class="filter-chip"
+          [class.active-chip]="alertStatusFilter === 'all'"
+          (click)="setAlertStatusFilter('all')"
+        >
+          Toutes <span class="chip-count">{{ recentAlerts.length }}</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip chip-open"
+          [class.active-chip]="alertStatusFilter === 'open'"
+          (click)="setAlertStatusFilter('open')"
+        >
+          <span class="dot dot-crit"></span>
+          Ouvertes <span class="chip-count">{{ countAlertsByStatus('open') }}</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip chip-ack"
+          [class.active-chip]="alertStatusFilter === 'acknowledged'"
+          (click)="setAlertStatusFilter('acknowledged')"
+        >
+          <span class="dot dot-warn"></span>
+          Acquittées <span class="chip-count">{{ countAlertsByStatus('acknowledged') }}</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip chip-res"
+          [class.active-chip]="alertStatusFilter === 'resolved'"
+          (click)="setAlertStatusFilter('resolved')"
+        >
+          <span class="dot dot-ok"></span>
+          Résolues <span class="chip-count">{{ countAlertsByStatus('resolved') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div class="alert-empty" *ngIf="filteredAlerts.length === 0">
+        <span>✅</span>
+        <span>
+          {{ alertStatusFilter === 'all' 
+              ? 'Aucune alerte active dans les 7 derniers jours. Tous les systèmes sont nominaux.' 
+              : 'Aucune alerte correspondant au filtre « ' + alertStatusFilter + ' ».' }}
+        </span>
+      </div>
+
+      <div class="alert-grid" *ngIf="filteredAlerts.length > 0">
+        <div class="alert-item" *ngFor="let a of filteredAlerts" [class]="'alert-sev-' + a.severity" [class.alert-resolved-item]="a.status === 'resolved'">
+          <div class="alert-item-header">
+            <span class="badge" [class]="getSeverityBadge(a.severity)">
+              <span class="dot" [class]="'dot-' + (a.severity === 'critical' ? 'crit' : 'warn')"></span>
+              {{ a.severity | uppercase }}
+            </span>
+            <span class="alert-type-chip">{{ a.type }}</span>
+
+            <!-- Statut interactif de l'alerte -->
+            <span class="alert-status-badge" [ngClass]="'status-' + a.status">
+              {{ a.status === 'open' ? '🔴 Ouverte' : (a.status === 'acknowledged' ? '🟡 Acquittée' : '🟢 Résolue') }}
+            </span>
+
+            <span class="alert-time mono">{{ a.created_at | date:'dd/MM HH:mm' }}</span>
+          </div>
+
+          <p class="alert-msg">{{ a.message }}</p>
+
+          <div class="alert-item-footer">
+            <div class="alert-footer-device" *ngIf="a.device">
+              <button class="device-link-btn" (click)="filterByDevice(a.device.serial_number); selectDeviceForHeap(a.device.serial_number);" title="Inspecter ce module">
+                <span class="link-icon">🔗</span>
+                <strong class="mono">{{ a.device.serial_number }}</strong>
+                <span class="device-name-hint">{{ a.device.label }}</span>
+                <span class="arrow-hint">→</span>
+              </button>
+            </div>
+
+            <!-- Actions dynamiques d'acquittement et résolution -->
+            <div class="alert-item-actions">
+              <button
+                *ngIf="a.status === 'open'"
+                type="button"
+                class="alert-act-btn btn-act-ack"
+                (click)="acknowledgeAlert(a, $event)"
+                title="Accuser réception de l'alerte"
+              >
+                👁️ Acquitter
+              </button>
+
+              <button
+                *ngIf="a.status === 'open' || a.status === 'acknowledged'"
+                type="button"
+                class="alert-act-btn btn-act-resolve"
+                (click)="resolveAlert(a, $event)"
+                title="Marquer l'alerte comme résolue"
+              >
+                ✅ Résoudre
+              </button>
+
+              <button
+                *ngIf="a.status === 'resolved' || a.status === 'acknowledged'"
+                type="button"
+                class="alert-act-btn btn-act-reopen"
+                (click)="reopenAlert(a, $event)"
+                title="Réouvrir l'alerte"
+              >
+                🔄 Réouvrir
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     3. GRAPHIQUE HEAP DYNAMIQUE AVEC SEUILS VISUELS
+════════════════════════════════════════════════════════════════════════ -->
+<section id="heap-chart-section" class="heap-section fade-up" style="animation-delay:0.14s">
+  <div class="card">
+    <div class="card-header">
+      <div class="chart-header-left">
+        <div>
+          <h2>🧠 Graphique Heap & Télémétrie Mémoire</h2>
+          <span class="card-hint">Visualisation temporelle et évaluation de la règle de santé</span>
+        </div>
+
+        <!-- Meta status badge for selected device -->
+        <div class="device-live-status" *ngIf="heapDeviceMeta">
+          <span class="device-tag mono">{{ selectedHeapDevice }}</span>
+          <span class="badge" [class]="'badge-' + (heapDeviceMeta.current_health === 'sain' ? 'ok' : (heapDeviceMeta.current_health === 'surveillance' ? 'warn' : 'crit'))">
+            <span class="dot" [class]="'dot-' + (heapDeviceMeta.current_health === 'sain' ? 'ok' : (heapDeviceMeta.current_health === 'surveillance' ? 'warn' : 'crit'))"></span>
+            État : {{ heapDeviceMeta.current_health | uppercase }}
+          </span>
+          <span class="live-heap-val mono" *ngIf="heapDeviceMeta.current_heap">
+            {{ heapDeviceMeta.current_heap }} KB
+          </span>
+          <app-button variant="secondary" size="sm" iconName="heart-pulse" (btnClick)="openHealth(selectedHeapDevice)">Fiche Diagnostic</app-button>
+        </div>
+      </div>
+
+      <!-- Controls : Device Picker + Period Picker -->
+      <div class="chart-controls">
+        <div class="control-select-group">
+          <label class="control-label">Module :</label>
+          <select class="custom-select" [ngModel]="selectedHeapDevice" (ngModelChange)="onHeapDeviceChange($event)">
+            <option *ngFor="let d of devicesList" [value]="d.serial_number">
+              {{ d.serial_number }} ({{ d.label }})
+            </option>
+          </select>
+        </div>
+
+        <div class="control-select-group">
+          <label class="control-label">Période :</label>
+          <div class="segmented-control">
+            <button [class.active]="selectedHeapPeriod === '24h'" (click)="onHeapPeriodChange('24h')">24h</button>
+            <button [class.active]="selectedHeapPeriod === '7d'" (click)="onHeapPeriodChange('7d')">7 jours</button>
+            <button [class.active]="selectedHeapPeriod === '30d'" (click)="onHeapPeriodChange('30d')">30 jours</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <app-heap-chart
+        [points]="heapPoints"
+        [deviceSerial]="selectedHeapDevice"
+        [thresholds]="heapThresholds"
+        [loading]="heapChartLoading"
+      ></app-heap-chart>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     4. LISTE DES ÉVÉNEMENTS (LOGS) AVEC FILTRES COMPLETS & PAGINATION
+════════════════════════════════════════════════════════════════════════ -->
+<section id="events-section" class="events-section fade-up" style="animation-delay:0.18s">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>📜 Journal des Événements & Télémétrie</h2>
+        <span class="card-hint">
+          Types supportés : BOOT, WATCHDOG_RESET, LOW_HEAP, WIFI_LOST, SUPLA_OFFLINE, UPDATE_REQUIRED
+        </span>
+      </div>
+      <div class="header-right-meta">
+        <span class="count-badge">{{ eventsTotal }} événements</span>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-toolbar">
+      <div class="filter-item">
+        <label class="filter-lbl">Période</label>
+        <select class="filter-input" [(ngModel)]="filterPeriod" (change)="onFilterChange()">
+          <option *ngFor="let p of periods" [value]="p.value">{{ p.label }}</option>
+        </select>
+      </div>
+
+      <div class="filter-item">
+        <label class="filter-lbl">Type d'événement</label>
+        <select class="filter-input" [(ngModel)]="filterType" (change)="onFilterChange()">
+          <option *ngFor="let t of supportedEventTypes" [value]="t.value">{{ t.label }}</option>
+        </select>
+      </div>
+
+      <div class="filter-item">
+        <label class="filter-lbl">Gravité</label>
+        <select class="filter-input" [(ngModel)]="filterSeverity" (change)="onFilterChange()">
+          <option *ngFor="let s of supportedSeverities" [value]="s.value">{{ s.label }}</option>
+        </select>
+      </div>
+
+      <div class="filter-item">
+        <label class="filter-lbl">Module</label>
+        <select class="filter-input" [(ngModel)]="filterDevice" (change)="onFilterChange()">
+          <option value="">Tous les modules</option>
+          <option *ngFor="let d of devicesList" [value]="d.serial_number">
+            {{ d.serial_number }} - {{ d.label }}
+          </option>
+        </select>
+      </div>
+
+      <div class="filter-item search-item">
+        <label class="filter-lbl">Recherche</label>
+        <div class="search-wrap">
+          <input
+            type="text"
+            class="filter-input search-input"
+            placeholder="Message, valeur, serial…"
+            [(ngModel)]="searchQuery"
+            (keyup.enter)="onFilterChange()"
+          />
+          <app-button
+            variant="primary"
+            size="sm"
+            iconName="search"
+            ariaLabel="Rechercher"
+            tooltip="Rechercher"
+            (btnClick)="onFilterChange()"
+          >
+          </app-button>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-end;">
+        <app-button
+          variant="secondary"
+          size="md"
+          iconName="refresh"
+          (btnClick)="resetFilters()"
+          ariaLabel="Réinitialiser tous les filtres"
+          tooltip="Réinitialiser les filtres"
+        >
+          Effacer filtres
+        </app-button>
+      </div>
+    </div>
+
+    <!-- Active filter summary -->
+    <div class="active-filters-strip" *ngIf="filterDevice || filterType !== 'ALL' || filterSeverity !== 'ALL' || filterPeriod !== 'all' || searchQuery">
+      <span class="active-filter-tag" *ngIf="filterDevice">
+        Module: <strong>{{ filterDevice }}</strong>
+        <span class="remove-tag" (click)="filterDevice=''; onFilterChange();">✕</span>
+      </span>
+      <span class="active-filter-tag" *ngIf="filterType !== 'ALL'">
+        Type: <strong>{{ filterType }}</strong>
+        <span class="remove-tag" (click)="filterType='ALL'; onFilterChange();">✕</span>
+      </span>
+      <span class="active-filter-tag" *ngIf="filterSeverity !== 'ALL'">
+        Gravité: <strong>{{ filterSeverity }}</strong>
+        <span class="remove-tag" (click)="filterSeverity='ALL'; onFilterChange();">✕</span>
+      </span>
+      <span class="active-filter-tag" *ngIf="filterPeriod !== 'all'">
+        Période: <strong>{{ filterPeriod }}</strong>
+        <span class="remove-tag" (click)="filterPeriod='all'; onFilterChange();">✕</span>
+      </span>
+      <span class="active-filter-tag" *ngIf="searchQuery">
+        Recherche: <strong>"{{ searchQuery }}"</strong>
+        <span class="remove-tag" (click)="searchQuery=''; onFilterChange();">✕</span>
+      </span>
+    </div>
+
+    <!-- Events Table -->
+    <div class="card-body no-pad">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date / Heure</th>
+              <th>Module</th>
+              <th>Type d'Événement</th>
+              <th>Gravité</th>
+              <th>Message</th>
+              <th>Valeur Technique</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="eventsLoading">
+              <td colspan="6"><div class="skeleton" style="height: 180px; margin: 12px;"></div></td>
+            </tr>
+            <tr *ngIf="!eventsLoading && events.length === 0">
+              <td colspan="6" class="empty-cell">
+                <span>📭</span> Aucun événement correspondant aux filtres sélectionnés.
+              </td>
+            </tr>
+            <tr *ngFor="let e of events">
+              <td class="mono muted" data-label="Date">
+                {{ e.occurred_at | date:'dd/MM/yyyy HH:mm:ss' }}
+              </td>
+              <td data-label="Module">
+                <div class="module-cell" *ngIf="e.device" (click)="selectDeviceForHeap(e.device.serial_number)">
+                  <span class="mono module-serial">{{ e.device.serial_number }}</span>
+                  <span class="module-label-hint">{{ e.device.label }}</span>
+                </div>
+                <span class="muted" *ngIf="!e.device">—</span>
+              </td>
+              <td data-label="Type">
+                <span class="type-badge" [class]="getTypeBadge(e.type)">
+                  {{ e.type }}
+                </span>
+              </td>
+              <td data-label="Gravité">
+                <span class="badge" [class]="getSeverityBadge(e.severity)">
+                  <span class="dot" [class]="'dot-' + (e.severity === 'critical' ? 'crit' : (e.severity === 'warning' ? 'warn' : 'info'))"></span>
+                  {{ e.severity | uppercase }}
+                </span>
+              </td>
+              <td class="message-cell" data-label="Message">
+                {{ e.message }}
+              </td>
+              <td data-label="Valeur Technique">
+                <code class="tech-val" *ngIf="e.valeur_technique">{{ e.valeur_technique }}</code>
+                <span class="muted" *ngIf="!e.valeur_technique">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Controls -->
+      <div class="pagination-footer" *ngIf="eventsTotal > 0">
+        <div class="pagination-info">
+          Page <strong>{{ eventsPage }}</strong> sur <strong>{{ eventsLastPage }}</strong> (Total: {{ eventsTotal }} événements)
+        </div>
+        <div class="pagination-buttons">
+          <app-button
+            variant="secondary"
+            size="sm"
+            iconName="first-page"
+            [disabled]="eventsPage <= 1"
+            (btnClick)="goToPage(1)"
+            ariaLabel="Première page"
+            tooltip="Première page"
+          >
+          </app-button>
+          <app-button
+            variant="secondary"
+            size="sm"
+            iconName="chevron-left"
+            [disabled]="eventsPage <= 1"
+            (btnClick)="goToPage(eventsPage - 1)"
+            ariaLabel="Page précédente"
+            tooltip="Page précédente"
+          >
+          </app-button>
+          <span class="page-current mono">{{ eventsPage }}</span>
+          <app-button
+            variant="secondary"
+            size="sm"
+            iconName="chevron-right"
+            [disabled]="eventsPage >= eventsLastPage"
+            (btnClick)="goToPage(eventsPage + 1)"
+            ariaLabel="Page suivante"
+            tooltip="Page suivante"
+          >
+          </app-button>
+          <app-button
+            variant="secondary"
+            size="sm"
+            iconName="last-page"
+            [disabled]="eventsPage >= eventsLastPage"
+            (btnClick)="goToPage(eventsLastPage)"
+            ariaLabel="Dernière page"
+            tooltip="Dernière page"
+          >
+          </app-button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fiche Diagnostic Unifiée Modal -->
+<app-device-health-modal
+  [isOpen]="showHealthModal"
+  [deviceId]="healthDeviceId"
+  (close)="closeHealth()"
+></app-device-health-modal>

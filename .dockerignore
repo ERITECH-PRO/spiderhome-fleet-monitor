@@ -1,0 +1,9 @@
+**/node_modules
+**/vendor
+**/dist
+.git
+.env
+.env.docker
+*.zip
+docs/
+*.docx

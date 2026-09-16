@@ -1,0 +1,235 @@
+<div class="events-page">
+
+  <!-- HEADER -->
+  <header class="events-header fade-up">
+    <div class="header-brand">
+      <div class="eyebrow"><span class="dot-live"></span><span>Supervision Temps Reel</span></div>
+      <h1 class="page-title">
+        <app-icon name="signal" [size]="22" class="title-icon"></app-icon>
+        Evenements &amp; Sante des Modules
+      </h1>
+      <p class="page-sub">Chronologie complete des evenements normalises · Graphique de memoire Heap · Filtrage avance</p>
+    </div>
+    <div class="header-actions">
+      <a routerLink="/dashboard" class="btn-secondary-link">
+        <app-icon name="dashboard" [size]="15"></app-icon> Tableau de bord
+      </a>
+      <button class="btn-refresh" (click)="refreshAll()" [disabled]="eventsLoading" title="Actualiser">
+        <app-icon name="refresh" [size]="15" [class.spin-icon]="eventsLoading"></app-icon> Actualiser
+      </button>
+    </div>
+  </header>
+
+  <!-- TYPE LEGEND -->
+  <section class="type-legend fade-up">
+    <div class="legend-card">
+      <span class="legend-title">Types d'evenements normalises :</span>
+      <div class="legend-chips">
+        <span class="type-badge type-badge-info">BOOT</span>
+        <span class="type-badge type-badge-danger">WATCHDOG_RESET</span>
+        <span class="type-badge type-badge-warning">LOW_HEAP</span>
+        <span class="type-badge type-badge-warning">WIFI_LOST</span>
+        <span class="type-badge type-badge-danger">SUPLA_OFFLINE</span>
+        <span class="type-badge type-badge-info">UPDATE_REQUIRED</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FILTER BAR -->
+  <section class="filter-section fade-up">
+    <div class="filter-card">
+      <div class="filter-grid">
+
+        <div class="filter-item filter-search">
+          <label class="filter-label">Recherche</label>
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="filter-input" placeholder="Module, type, message..."
+              [(ngModel)]="searchQuery" (ngModelChange)="onSearch($event)" />
+            <button *ngIf="searchQuery" class="clear-btn" (click)="clearSearch()">x</button>
+          </div>
+        </div>
+
+        <div class="filter-item">
+          <label class="filter-label">Periode</label>
+          <select class="filter-select" [(ngModel)]="filterPeriod" (ngModelChange)="onFilterChange()">
+            <option *ngFor="let p of periods" [value]="p.value">{{ p.label }}</option>
+          </select>
+        </div>
+
+        <div class="filter-item">
+          <label class="filter-label">Type</label>
+          <select class="filter-select" [(ngModel)]="filterType" (ngModelChange)="onFilterChange()">
+            <option *ngFor="let t of supportedEventTypes" [value]="t.value">{{ t.label }}</option>
+          </select>
+        </div>
+
+        <div class="filter-item">
+          <label class="filter-label">Gravite</label>
+          <select class="filter-select" [(ngModel)]="filterSeverity" (ngModelChange)="onFilterChange()">
+            <option *ngFor="let s of supportedSeverities" [value]="s.value">{{ s.label }}</option>
+          </select>
+        </div>
+
+        <div class="filter-item">
+          <label class="filter-label">Module (Serie)</label>
+          <input type="text" class="filter-input" placeholder="SPH-2026-XXXX"
+            [(ngModel)]="filterDevice" (ngModelChange)="onFilterChange()" />
+        </div>
+
+        <div class="filter-item filter-action">
+          <label class="filter-label">&nbsp;</label>
+          <button class="btn-reset" (click)="resetFilters()">
+            <app-icon name="refresh" [size]="13"></app-icon> Reset
+          </button>
+        </div>
+      </div>
+
+      <div class="filter-stats" *ngIf="!eventsLoading">
+        <span class="stat-badge"><strong>{{ eventsTotal }}</strong> evenement(s)</span>
+        <span class="stat-badge stat-badge-crit" *ngIf="criticalCount > 0">{{ criticalCount }} critique(s)</span>
+        <span class="stat-badge stat-badge-warn" *ngIf="warningCount > 0">{{ warningCount }} warning(s)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHRONOLOGIE -->
+  <section class="timeline-section fade-up" id="events-timeline">
+    <div class="section-card">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">Chronologie des Evenements</h2>
+          <p class="section-hint">Historique pagine de tous les evenements normalises de la flotte IoT</p>
+        </div>
+        <span class="page-info" *ngIf="!eventsLoading">Page {{ eventsPage }} / {{ eventsLastPage }}</span>
+      </div>
+
+      <div *ngIf="eventsLoading && events.length === 0" class="skeleton-list">
+        <div class="skeleton-row" *ngFor="let i of [1,2,3,4,5,6,7,8]"></div>
+      </div>
+
+      <div *ngIf="!eventsLoading && events.length === 0" class="empty-state">
+        <span class="empty-icon">No results</span>
+        <span class="empty-text">Aucun evenement correspondant aux filtres actuels.</span>
+        <button class="btn-reset" (click)="resetFilters()">Reinitialiser les filtres</button>
+      </div>
+
+      <div class="table-scroll" *ngIf="events.length > 0">
+        <table class="data-table" style="min-width:1150px;">
+          <thead>
+            <tr>
+              <th style="width: 70px;">ID</th>
+              <th>Device ID</th>
+              <th>Type</th>
+              <th>Gravité</th>
+              <th>Valeur</th>
+              <th>Message</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let evt of events" class="table-row">
+              <td>
+                <span class="mono text-muted text-xs font-semibold">#{{ evt.id }}</span>
+              </td>
+              <td>
+                <span class="mono font-semibold text-primary-light" *ngIf="evt.device_id">#{{ evt.device_id }}</span>
+                <span class="mono text-muted text-xs" *ngIf="!evt.device_id && evt.device?.id">#{{ evt.device?.id }}</span>
+                <span class="text-muted" *ngIf="!evt.device_id && !evt.device?.id">—</span>
+              </td>
+              <td>
+                <span [ngClass]="getTypeBadge(evt.type)">{{ evt.type }}</span>
+              </td>
+              <td>
+                <span [ngClass]="getSeverityBadge(evt.severity)">{{ evt.severity }}</span>
+              </td>
+              <td>
+                <span class="mono text-muted text-xs" *ngIf="evt.value !== undefined && evt.value !== null">{{ evt.value }}</span>
+                <span class="mono text-muted text-xs" *ngIf="(evt.value === undefined || evt.value === null) && evt.valeur_technique">{{ evt.valeur_technique }}</span>
+                <span class="text-muted" *ngIf="(evt.value === undefined || evt.value === null) && !evt.valeur_technique">—</span>
+              </td>
+              <td class="text-wrap">
+                {{ evt.message }}
+              </td>
+              <td class="mono text-muted text-xs">
+                {{ evt.occurred_at | date:'dd/MM/yyyy HH:mm:ss' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination" *ngIf="eventsLastPage > 1">
+        <button class="page-btn" [disabled]="eventsPage <= 1" (click)="goToPage(eventsPage - 1)">Prec.</button>
+        <ng-container *ngFor="let p of getPageNumbers()">
+          <span *ngIf="p === -1" class="page-ellipsis">...</span>
+          <button *ngIf="p !== -1" class="page-btn" [class.active]="p === eventsPage" (click)="goToPage(p)">{{ p }}</button>
+        </ng-container>
+        <button class="page-btn" [disabled]="eventsPage >= eventsLastPage" (click)="goToPage(eventsPage + 1)">Suiv.</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- GRAPHIQUE HEAP MEMORY -->
+  <section class="heap-section fade-up" id="heap-chart">
+    <div class="section-card">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">Graphique de Memoire Heap</h2>
+          <p class="section-hint">Suivi temporel de la consommation RAM libre d'un module IoT</p>
+        </div>
+      </div>
+
+      <div class="heap-controls">
+        <div class="heap-selector-group">
+          <label class="filter-label">Module a analyser</label>
+          <div class="heap-device-input-wrap">
+            <input type="text" class="filter-input" placeholder="SPH-2026-XXXX"
+              [(ngModel)]="selectedHeapDevice" (ngModelChange)="onHeapDeviceInput($event)" />
+            <select class="filter-select" [(ngModel)]="selectedHeapDevice" (ngModelChange)="fetchHeapHistory()" *ngIf="devicesList.length > 0">
+              <option value="">Selectionner un module</option>
+              <option *ngFor="let d of devicesList" [value]="d.serial_number">{{ d.label || d.serial_number }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="heap-period-group">
+          <label class="filter-label">Periode</label>
+          <div class="period-pills">
+            <button *ngFor="let p of heapPeriods" class="period-pill"
+              [class.active]="selectedHeapPeriod === p.value" (click)="onHeapPeriodChange(p.value)">{{ p.label }}</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="heap-device-info" *ngIf="heapDeviceMeta">
+        <span class="device-meta-label">{{ heapDeviceMeta.label }}</span>
+        <span class="firmware-badge">FW {{ heapDeviceMeta.firmware }}</span>
+        <span class="health-badge" [ngClass]="'health-' + heapDeviceMeta.current_health">
+          {{ heapDeviceMeta.current_health | uppercase }}
+        </span>
+        <span class="heap-val" *ngIf="heapDeviceMeta.current_heap !== null">
+          Heap actuel : <strong>{{ heapDeviceMeta.current_heap | number:'1.1-1' }} KB</strong>
+        </span>
+      </div>
+
+      <div *ngIf="heapChartLoading" class="heap-loading">
+        <div class="skeleton" style="height: 240px; border-radius: 12px;"></div>
+      </div>
+
+      <div *ngIf="!heapChartLoading && heapPoints.length === 0" class="empty-state">
+        <span class="empty-text">Aucune donnee Heap disponible pour ce module sur cette periode.</span>
+      </div>
+
+      <app-heap-chart *ngIf="!heapChartLoading && heapPoints.length > 0"
+        [points]="heapPoints" [thresholds]="heapThresholds">
+      </app-heap-chart>
+
+      <div class="heap-legend" *ngIf="heapPoints.length > 0">
+        <span class="legend-item legend-sain">Sain (&gt; {{ heapThresholds.surveillance_min }} KB)</span>
+        <span class="legend-item legend-surv">Surveillance ({{ heapThresholds.critique_max }}&ndash;{{ heapThresholds.surveillance_min }} KB)</span>
+        <span class="legend-item legend-crit">Critique (&lt; {{ heapThresholds.critique_max }} KB)</span>
+      </div>
+    </div>
+  </section>
+
+</div>

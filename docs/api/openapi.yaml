@@ -1,0 +1,300 @@
+openapi: 3.0.3
+info:
+  title: SpiderHome Fleet Manager API
+  description: Spécification officielle du contrat d'intégration API REST Laravel 11 pour la plateforme de supervision de la flotte IoT SpiderHome.
+  version: 2.0.0
+  contact:
+    name: Support Technique SpiderHome
+    email: support@spiderhome.com
+
+servers:
+  - url: http://localhost:8000/api
+    description: Serveur de Développement Local (Laravel Sanctum)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
+
+paths:
+  /login:
+    post:
+      summary: Authentification utilisateur
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  example: ramif792@gmail.com
+                password:
+                  type: string
+                  example: password
+      responses:
+        '200':
+          description: Connexion réussie, émission du jeton Bearer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+                  access_token: { type: string, example: "12|vR6Nh2xWMTz7..." }
+                  token_type: { type: string, example: "Bearer" }
+                  user:
+                    type: object
+                    properties:
+                      id: { type: integer, example: 1 }
+                      name: { type: string, example: "Admin SpiderHome" }
+                      email: { type: string, example: "ramif792@gmail.com" }
+                      role: { type: string, example: "admin" }
+        '401':
+          description: Identifiants incorrects
+        '422':
+          description: Erreur de validation des champs
+
+  /logout:
+    post:
+      summary: Déconnexion et révocation du jeton
+      responses:
+        '200':
+          description: Déconnexion réussie
+
+  /me:
+    get:
+      summary: Profil de l'utilisateur connecté
+      responses:
+        '200':
+          description: Informations du compte connecté
+
+  /customers:
+    get:
+      summary: Liste paginée des clients
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+          description: Recherche par nom, email ou SIRET
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: Collection de clients
+    post:
+      summary: Créer un compte client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, phone]
+              properties:
+                name: { type: string, example: "Ben Salah Ahmed" }
+                email: { type: string, example: "ahmed@example.test" }
+                phone: { type: string, example: "+216 71 123 456" }
+                city: { type: string, example: "Tunis" }
+                siret: { type: string, example: "98765432100019" }
+      responses:
+        '201':
+          description: Client créé avec succès
+        '422':
+          description: Email ou téléphone déjà utilisé
+
+  /customers/{id}:
+    put:
+      summary: Modifier un client
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                phone: { type: string }
+                status: { type: string, enum: [active, prospect, inactive] }
+      responses:
+        '200':
+          description: Client mis à jour
+    delete:
+      summary: Supprimer un client
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Client supprimé
+
+  /sites:
+    get:
+      summary: Liste des sites d'installation
+      parameters:
+        - in: query
+          name: customer_id
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Liste des sites
+    post:
+      summary: Créer un site d'installation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, name, address]
+              properties:
+                customer_id: { type: integer, example: 1 }
+                name: { type: string, example: "Tunis Centre" }
+                address: { type: string, example: "Avenue Habib Bourguiba, Tunis" }
+                timezone: { type: string, example: "Africa/Tunis" }
+      responses:
+        '201':
+          description: Site créé
+
+  /devices:
+    get:
+      summary: Liste des modules IoT
+      responses:
+        '200':
+          description: Liste des modules
+    post:
+      summary: Enregistrer un nouveau module IoT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [site_id, model_id, serial_number]
+              properties:
+                site_id: { type: integer, example: 1 }
+                model_id: { type: integer, example: 1 }
+                serial_number: { type: string, example: "SN-001" }
+                mac: { type: string, example: "3C:71:BF:99:12:34" }
+                firmware: { type: string, example: "2.4.1" }
+      responses:
+        '201':
+          description: Module enregistré avec succès
+        '422':
+          description: Le numéro de série (serial_number) est déjà utilisé.
+
+  /devices/{id}/health:
+    get:
+      summary: Fiche diagnostic santé d'un module IoT
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Diagnostic santé unifié (healthy, warning, critical)
+
+  /device-events:
+    get:
+      summary: Journal des événements télémétriques
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string, enum: [BOOT, WATCHDOG_RESET, LOW_HEAP, WIFI_LOST, SUPLA_OFFLINE, UPDATE_REQUIRED] }
+      responses:
+        '200':
+          description: Liste des événements filtrés
+
+  /service-requests:
+    get:
+      summary: Liste des demandes d'intervention SAV
+      responses:
+        '200':
+          description: Collection des tickets SAV
+    post:
+      summary: Créer une demande d'intervention
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, site_id, device_id, title]
+              properties:
+                customer_id: { type: integer, example: 1 }
+                site_id: { type: integer, example: 1 }
+                device_id: { type: integer, example: 1 }
+                title: { type: string, example: "Instabilité heap mémoire" }
+                priority: { type: string, enum: [low, medium, high, critical] }
+                status: { type: string, enum: [open, in_progress, resolved, cancelled] }
+      responses:
+        '201':
+          description: Demande d'intervention créée
+
+  /service-requests/{id}/status:
+    patch:
+      summary: Mettre à jour le statut d'une intervention
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [open, in_progress, resolved, cancelled] }
+                comment: { type: string, example: "Technicien assigné pour intervention" }
+      responses:
+        '200':
+          description: Statut mis à jour et historisé dans la timeline
+
+  /update-notices/{id}/consent:
+    patch:
+      summary: Simulation du consentement client pour mise à jour firmware
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consent_status]
+              properties:
+                consent_status: { type: string, enum: [pending, granted, refused] }
+                notes: { type: string, example: "Consentement validé par le client" }
+      responses:
+        '200':
+          description: Consentement mis à jour sans action réseau vers le module IoT
+
+  /fleet/overview:
+    get:
+      summary: Synthèse KPIs et métriques de la flotte
+      responses:
+        '200':
+          description: Compteurs métiers (clients, sites, modules, alertes)

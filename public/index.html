@@ -1,0 +1,1529 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Heap Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #08101f;
+        --card: rgba(17, 26, 49, 0.82);
+        --muted: #98a8cb;
+        --text: #ecf2ff;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(158, 178, 255, 0.16);
+        --ok: #1f9d55;
+        --warn: #f59e0b;
+        --crit: #ef4444;
+        --accent-a: rgba(77, 118, 255, 0.22);
+        --accent-b: rgba(48, 196, 191, 0.16);
+        --accent-c: rgba(255, 132, 76, 0.18);
+        --shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        line-height: 1.45;
+        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        background:
+          radial-gradient(900px 700px at 10% -10%, var(--accent-a), transparent 58%),
+          radial-gradient(700px 500px at 100% 0%, var(--accent-c), transparent 58%),
+          radial-gradient(800px 540px at 50% 120%, var(--accent-b), transparent 62%),
+          linear-gradient(180deg, #0a1122 0%, #070d19 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 88%);
+        opacity: 0.24;
+      }
+
+      header,
+      .summaryStrip,
+      .controlBar,
+      main {
+        width: min(1240px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        padding-top: 24px;
+      }
+
+      .topbar {
+        position: relative;
+        overflow: hidden;
+        padding: 22px;
+        border: 1px solid var(--border-strong);
+        border-radius: 22px;
+        background:
+          linear-gradient(135deg, rgba(25, 38, 72, 0.96), rgba(15, 23, 43, 0.88)),
+          var(--card);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .topbar::before {
+        content: "";
+        position: absolute;
+        inset: auto -70px -90px auto;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(111, 145, 255, 0.32), transparent 70%);
+        pointer-events: none;
+      }
+
+      .topbarContent {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        padding: 6px 10px;
+        border: 1px solid rgba(144, 167, 255, 0.22);
+        border-radius: 999px;
+        background: rgba(8, 14, 28, 0.28);
+        color: #d4defa;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #5eead4, #60a5fa);
+        box-shadow: 0 0 14px rgba(96, 165, 250, 0.55);
+      }
+
+      .title {
+        display: grid;
+        gap: 8px;
+        max-width: 720px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.35rem, 2.6vw, 2rem);
+        line-height: 1.05;
+        letter-spacing: -0.03em;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        font-size: 0.96rem;
+      }
+
+      .meta {
+        display: grid;
+        gap: 10px;
+        min-width: 250px;
+        color: var(--muted);
+      }
+
+      .meta > div,
+      .metaCard {
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(5, 11, 23, 0.24);
+      }
+
+      .meta > div {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 0.95rem;
+      }
+
+      .metaLabel {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .metaValue {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 0.95rem;
+      }
+
+      .summaryStrip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        padding-top: 16px;
+      }
+
+      .summaryCard {
+        position: relative;
+        overflow: hidden;
+        padding: 16px 18px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(19, 29, 57, 0.88), rgba(11, 17, 32, 0.82));
+        box-shadow: var(--shadow);
+      }
+
+      .summaryCard::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(124, 92, 255, 0.08), transparent 45%);
+        pointer-events: none;
+      }
+
+      .summaryLabel,
+      .summaryHint {
+        position: relative;
+        z-index: 1;
+      }
+
+      .summaryLabel {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .summaryValue {
+        position: relative;
+        z-index: 1;
+        margin-top: 8px;
+        font-size: clamp(1.6rem, 2.8vw, 2rem);
+        line-height: 1;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+      }
+
+      .summaryValue.compact {
+        font-size: clamp(1rem, 2.4vw, 1.15rem);
+        line-height: 1.25;
+        letter-spacing: -0.02em;
+        word-break: break-word;
+      }
+
+      .summaryHint {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .alertStrip {
+        width: min(1240px, calc(100% - 32px));
+        margin: 0 auto;
+        padding-top: 14px;
+      }
+
+      .alertPanel {
+        display: grid;
+        gap: 12px;
+        padding: 16px 18px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(18, 28, 54, 0.9), rgba(12, 18, 35, 0.84));
+        box-shadow: var(--shadow);
+      }
+
+      .alertPanel.state-ok {
+        border-color: rgba(31, 157, 85, 0.24);
+        background: linear-gradient(180deg, rgba(13, 36, 30, 0.88), rgba(9, 23, 20, 0.84));
+      }
+
+      .alertPanel.state-warn {
+        border-color: rgba(245, 158, 11, 0.28);
+        background: linear-gradient(180deg, rgba(52, 33, 8, 0.9), rgba(27, 18, 6, 0.84));
+      }
+
+      .alertPanel.state-crit {
+        border-color: rgba(239, 68, 68, 0.28);
+        background: linear-gradient(180deg, rgba(61, 16, 20, 0.92), rgba(30, 10, 12, 0.84));
+      }
+
+      .alertHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .alertTitleWrap {
+        display: grid;
+        gap: 6px;
+      }
+
+      .alertEyebrow {
+        color: var(--muted);
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .alertTitle {
+        margin: 0;
+        font-size: 1rem;
+        letter-spacing: -0.01em;
+      }
+
+      .alertText {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .alertPills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .alertPill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.16);
+        font-size: 0.84rem;
+      }
+
+      .alertPill strong {
+        font-weight: 700;
+      }
+
+      .controlBar {
+        padding-top: 14px;
+      }
+
+      .filterCard {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 18px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(18, 28, 54, 0.9), rgba(12, 18, 35, 0.84));
+        box-shadow: var(--shadow);
+      }
+
+      .filterGroup {
+        display: grid;
+        gap: 8px;
+        min-width: min(100%, 360px);
+      }
+
+      .filterLabel {
+        color: var(--muted);
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .filterSelect {
+        width: 100%;
+        padding: 11px 14px;
+        border: 1px solid rgba(158, 178, 255, 0.18);
+        border-radius: 14px;
+        background: rgba(8, 14, 28, 0.72);
+        color: var(--text);
+        font: inherit;
+        outline: none;
+      }
+
+      .filterSelect:focus {
+        border-color: rgba(96, 165, 250, 0.7);
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+      }
+
+      .filterMeta {
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: right;
+      }
+
+      main {
+        display: grid;
+        gap: 16px;
+        padding: 16px 0 30px;
+      }
+
+      .grid2 {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .card {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        background:
+          linear-gradient(180deg, rgba(18, 28, 54, 0.92), rgba(12, 18, 35, 0.9)),
+          var(--card);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .cardHeader,
+      .cardBody {
+        position: relative;
+        z-index: 1;
+      }
+
+      .cardHeader {
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .cardHeader h2 {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #dbe6ff;
+        letter-spacing: -0.01em;
+      }
+
+      .hint {
+        font-size: 0.84rem;
+        color: var(--muted);
+        text-align: right;
+      }
+
+      .cardBody {
+        padding: 16px 18px 18px;
+      }
+
+      .statsTable {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+      }
+
+      .statsTable th,
+      .statsTable td {
+        border-bottom: 1px solid var(--border);
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .statsTable th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 0.8rem;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.18);
+        white-space: nowrap;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        flex: 0 0 auto;
+      }
+
+      .dot.ok {
+        background: var(--ok);
+        box-shadow: 0 0 10px rgba(31, 157, 85, 0.45);
+      }
+      .dot.warn {
+        background: var(--warn);
+        box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+      }
+      .dot.crit {
+        background: var(--crit);
+        box-shadow: 0 0 10px rgba(239, 68, 68, 0.45);
+      }
+
+      .tableWrap {
+        overflow: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(156, 175, 255, 0.32) transparent;
+      }
+
+      table.logs {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+        min-width: 860px;
+      }
+
+      table.logs th,
+      table.logs td {
+        border-bottom: 1px solid var(--border);
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+
+      table.logs th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 0.8rem;
+        position: sticky;
+        top: 0;
+        background: rgba(16, 24, 46, 0.98);
+        backdrop-filter: blur(10px);
+        z-index: 1;
+      }
+
+      tr.row-ok {
+        box-shadow: inset 4px 0 0 rgba(31, 157, 85, 0.92);
+      }
+      tr.row-warning {
+        box-shadow: inset 4px 0 0 rgba(245, 158, 11, 0.95);
+      }
+      tr.row-critical {
+        box-shadow: inset 4px 0 0 rgba(239, 68, 68, 0.95);
+      }
+
+      .chartLegend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .legendItem {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.04);
+        color: #d4defa;
+        font-size: 0.82rem;
+        white-space: nowrap;
+      }
+
+      .legendSwatch {
+        width: 16px;
+        height: 8px;
+        border-radius: 999px;
+        flex: 0 0 auto;
+      }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+          monospace;
+      }
+
+      .emptyCell {
+        color: var(--muted);
+        text-align: center;
+        font-style: italic;
+      }
+
+      .error {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        border-radius: 14px;
+        background: rgba(81, 18, 18, 0.28);
+        color: #ffb9b9;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+      }
+
+      canvas {
+        display: block;
+        width: 100% !important;
+        height: 340px !important;
+      }
+
+      @media (max-width: 1080px) {
+        .summaryStrip {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .grid2 {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        header,
+        .summaryStrip,
+        .alertStrip,
+        .controlBar,
+        main {
+          width: min(100% - 20px, 1240px);
+        }
+
+        header {
+          padding-top: 14px;
+        }
+
+        .topbar {
+          padding: 18px;
+          border-radius: 18px;
+        }
+
+        .topbarContent {
+          flex-direction: column;
+        }
+
+        .meta {
+          width: 100%;
+          min-width: 0;
+          text-align: left;
+        }
+
+        .summaryStrip {
+          grid-template-columns: 1fr;
+          padding-top: 12px;
+        }
+
+        .controlBar {
+          padding-top: 12px;
+        }
+
+        .alertStrip {
+          padding-top: 12px;
+        }
+
+        .filterCard {
+          flex-direction: column;
+          align-items: stretch;
+          padding: 14px 16px;
+        }
+
+        .alertPanel {
+          padding: 14px 16px;
+        }
+
+        .alertHeader {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .filterMeta {
+          text-align: left;
+        }
+
+        .summaryCard {
+          padding: 14px 16px;
+          border-radius: 16px;
+        }
+
+        .card {
+          border-radius: 18px;
+        }
+
+        .cardHeader {
+          flex-direction: column;
+          align-items: flex-start;
+          padding: 14px 16px;
+        }
+
+        .hint {
+          text-align: left;
+        }
+
+        .cardBody {
+          padding: 14px 16px 16px;
+        }
+
+        .chartLegend {
+          flex-wrap: nowrap;
+          overflow: auto;
+          padding-bottom: 4px;
+          scrollbar-width: none;
+        }
+
+        .chartLegend::-webkit-scrollbar {
+          display: none;
+        }
+
+        canvas {
+          height: 280px !important;
+        }
+
+        .tableWrap {
+          overflow: visible;
+        }
+
+        .statsTable,
+        .statsTable tbody,
+        .statsTable tr,
+        .statsTable td,
+        table.logs,
+        table.logs tbody,
+        table.logs tr,
+        table.logs td {
+          display: block;
+          width: 100%;
+        }
+
+        .statsTable thead,
+        table.logs thead {
+          display: none;
+        }
+
+        table.logs {
+          min-width: 0;
+        }
+
+        .statsTable tr,
+        table.logs tr {
+          margin-bottom: 12px;
+          padding: 12px 14px;
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.02);
+        }
+
+        .statsTable td,
+        table.logs td {
+          padding: 8px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          white-space: normal;
+          word-break: break-word;
+        }
+
+        .statsTable td:last-child,
+        table.logs td:last-child {
+          border-bottom: 0;
+          padding-bottom: 0;
+        }
+
+        .statsTable td::before,
+        table.logs td::before {
+          content: attr(data-label);
+          display: block;
+          margin-bottom: 4px;
+          color: var(--muted);
+          font-size: 0.72rem;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .emptyCell {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="topbar">
+        <div class="topbarContent">
+          <div class="title">
+          <span class="eyebrow">Heap monitor</span>
+          <h1>Heap Dashboard</h1>
+          <div class="subtitle">Données `heap_logs` • rafraîchissement automatique toutes les 10s</div>
+        </div>
+        <div class="meta">
+          <div>Dernière mise à jour: <span id="lastUpdated">—</span></div>
+          <div>État API: <span id="apiStatus" class="badge"><span class="dot warn"></span>inconnu</span></div>
+        </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="summaryStrip" aria-label="Synthese rapide">
+      <article class="summaryCard">
+        <span class="summaryLabel">Devices suivis</span>
+        <div class="summaryValue" id="metricDevices">0</div>
+        <div class="summaryHint">Devices visibles dans le resume</div>
+      </article>
+      <article class="summaryCard">
+        <span class="summaryLabel">Devices critiques</span>
+        <div class="summaryValue" id="metricCritical">0</div>
+        <div class="summaryHint">Avec au moins une alerte sur 24h</div>
+      </article>
+      <article class="summaryCard">
+        <span class="summaryLabel">Logs affiches</span>
+        <div class="summaryValue" id="metricLogs">0</div>
+        <div class="summaryHint">Dernieres lignes chargees dans la page</div>
+      </article>
+      <article class="summaryCard">
+        <span class="summaryLabel">Dernier device</span>
+        <div class="summaryValue compact mono" id="metricLastDevice">-</div>
+        <div class="summaryHint" id="metricLastEvent">Aucune donnee recente</div>
+      </article>
+    </section>
+
+    <section class="controlBar" aria-label="Filtres">
+      <div class="filterCard">
+        <div class="filterGroup">
+          <label class="filterLabel" for="deviceFilter">Filtre device</label>
+          <select id="deviceFilter" class="filterSelect">
+            <option value="">Tous les devices</option>
+          </select>
+        </div>
+        <div class="filterMeta" id="filterMeta">Tous les devices affiches</div>
+      </div>
+    </section>
+
+    <section class="alertStrip" aria-label="Alertes">
+      <div id="alertPanel" class="alertPanel state-ok">
+        <div class="alertHeader">
+          <div class="alertTitleWrap">
+            <div class="alertEyebrow">Etat des devices</div>
+            <h2 class="alertTitle" id="alertTitle">Aucune alerte active</h2>
+            <div class="alertText" id="alertText">Les derniers statuts connus sont stables.</div>
+          </div>
+          <span id="alertBadge" class="badge"><span class="dot ok"></span>OK</span>
+        </div>
+        <div id="alertPills" class="alertPills"></div>
+      </div>
+    </section>
+
+    <main>
+      <div class="grid2">
+        <section class="card">
+          <div class="cardHeader">
+            <h2>Résumé (24h) par device</h2>
+            <div class="hint">CRITICAL + heap min/max</div>
+          </div>
+          <div class="cardBody">
+            <div class="tableWrap">
+              <table class="statsTable" id="statsTable">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>CRITICAL (24h)</th>
+                    <th>Heap min (KB)</th>
+                    <th>Heap max (KB)</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div id="statsError" class="error" hidden></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="cardHeader">
+            <h2>Heap (KB) dans le temps</h2>
+            <div class="hint">100 dernières entrées • 1 courbe / device</div>
+          </div>
+          <div class="cardBody">
+            <div id="chartLegend" class="chartLegend"></div>
+            <canvas id="heapChart"></canvas>
+            <div id="chartError" class="error" hidden></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="cardHeader">
+          <h2>50 dernières entrées</h2>
+          <div class="hint">Rouge=CRITICAL • Orange=WARNING • Vert=OK</div>
+        </div>
+        <div class="cardBody">
+          <div class="tableWrap">
+            <table class="logs" id="logsTable">
+              <thead>
+                <tr>
+                  <th>timestamp</th>
+                  <th>device</th>
+                  <th>heap_kb</th>
+                  <th>uptime</th>
+                  <th>event</th>
+                  <th>status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="logsError" class="error" hidden></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="cardHeader">
+          <h2>Modules installes / clients</h2>
+          <div class="hint">Accord client requis - derniere fiche recue par module</div>
+        </div>
+        <div class="cardBody">
+          <div class="tableWrap">
+            <table class="logs" id="installTable">
+              <thead>
+                <tr>
+                  <th>timestamp</th>
+                  <th>device</th>
+                  <th>modele</th>
+                  <th>mac</th>
+                  <th>serveur SUPLA</th>
+                  <th>email</th>
+                  <th>firmware</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="installError" class="error" hidden></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const REFRESH_MS = 10_000;
+      const API = {
+        logs: (limit = 50) => `/api/logs?limit=${encodeURIComponent(limit)}`,
+        stats: () => `/api/stats`,
+        chart: (limit = 100) => `/api/chart?limit=${encodeURIComponent(limit)}`,
+        installations: (limit = 100) => `/api/installations?limit=${encodeURIComponent(limit)}`,
+        health: () => `/health`,
+      };
+      const FILTER_STORAGE_KEY = "heap-dashboard.device-filter";
+
+      function setBadge(el, { text, level }) {
+        const dotClass = level === "ok" ? "ok" : level === "crit" ? "crit" : "warn";
+        el.innerHTML = `<span class="dot ${dotClass}"></span>${escapeHtml(text)}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function formatTs(ts) {
+        if (!ts) return "-";
+        if (!ts) return "—";
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return String(ts);
+        return d.toLocaleString("fr-FR", { hour12: false });
+      }
+
+      function formatHeap(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "-";
+        if (!Number.isFinite(n)) return "â€”";
+        return n.toFixed(2);
+      }
+
+      function toNumber(v) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function statusTone(status) {
+        const s = String(status || "").toUpperCase();
+        if (s === "CRITICAL") return "crit";
+        if (s === "WARNING") return "warn";
+        return "ok";
+      }
+
+      function statusClass(status) {
+        const s = String(status || "").toUpperCase();
+        if (s === "CRITICAL") return "row-critical";
+        if (s === "WARNING") return "row-warning";
+        return "row-ok";
+      }
+
+      function stableColorForKey(key) {
+        // Palette agréable + fallback via hash.
+        const palette = [
+          "#60a5fa",
+          "#34d399",
+          "#f472b6",
+          "#fbbf24",
+          "#a78bfa",
+          "#fb7185",
+          "#22d3ee",
+          "#f97316",
+          "#84cc16",
+          "#e879f9",
+        ];
+        let h = 0;
+        const s = String(key);
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+        return palette[h % palette.length];
+      }
+
+      async function fetchJson(url) {
+        const res = await fetch(url, { headers: { "Accept": "application/json" }, cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} sur ${url}`);
+        return await res.json();
+      }
+
+      function setEmptyState(tbody, colspan, message) {
+        tbody.innerHTML = "";
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = colspan;
+        td.className = "emptyCell";
+        td.textContent = message;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      }
+
+      function getSavedDeviceFilter() {
+        try {
+          return window.localStorage.getItem(FILTER_STORAGE_KEY) || "";
+        } catch {
+          return "";
+        }
+      }
+
+      function saveDeviceFilter(value) {
+        try {
+          if (value) {
+            window.localStorage.setItem(FILTER_STORAGE_KEY, value);
+          } else {
+            window.localStorage.removeItem(FILTER_STORAGE_KEY);
+          }
+        } catch {}
+      }
+
+      function filterRowsByDevice(rows, selectedDevice) {
+        if (!selectedDevice) return rows;
+        return rows.filter((row) => String(row?.device ?? "") === selectedDevice);
+      }
+
+      const dom = {
+        lastUpdated: document.getElementById("lastUpdated"),
+        apiStatus: document.getElementById("apiStatus"),
+        deviceFilter: document.getElementById("deviceFilter"),
+        filterMeta: document.getElementById("filterMeta"),
+        alertPanel: document.getElementById("alertPanel"),
+        alertBadge: document.getElementById("alertBadge"),
+        alertTitle: document.getElementById("alertTitle"),
+        alertText: document.getElementById("alertText"),
+        alertPills: document.getElementById("alertPills"),
+        statsTableBody: document.querySelector("#statsTable tbody"),
+        logsTableBody: document.querySelector("#logsTable tbody"),
+        installTableBody: document.querySelector("#installTable tbody"),
+        statsError: document.getElementById("statsError"),
+        logsError: document.getElementById("logsError"),
+        installError: document.getElementById("installError"),
+        chartError: document.getElementById("chartError"),
+        chartLegend: document.getElementById("chartLegend"),
+        metricDevices: document.getElementById("metricDevices"),
+        metricCritical: document.getElementById("metricCritical"),
+        metricLogs: document.getElementById("metricLogs"),
+        metricLastDevice: document.getElementById("metricLastDevice"),
+        metricLastEvent: document.getElementById("metricLastEvent"),
+      };
+
+      const state = {
+        selectedDevice: "",
+        statsRows: [],
+        logsRows: [],
+        chartRows: [],
+        installRows: [],
+      };
+
+      let chart;
+
+      function normalizeStaticLabels() {
+        const subtitle = document.querySelector(".title .subtitle");
+        if (subtitle) {
+          subtitle.textContent = "Donnees `heap_logs` - rafraichissement automatique toutes les 10s";
+        }
+
+        const metaCards = document.querySelectorAll(".meta > div");
+        if (metaCards[0]) {
+          metaCards[0].innerHTML = `Derniere mise a jour: <span id="lastUpdated">-</span>`;
+        }
+        if (metaCards[1]) {
+          metaCards[1].innerHTML = `Etat API: <span id="apiStatus" class="badge"><span class="dot warn"></span>inconnu</span>`;
+        }
+
+        const cardHeaders = document.querySelectorAll(".cardHeader");
+        if (cardHeaders[0]) {
+          const title = cardHeaders[0].querySelector("h2");
+          const hint = cardHeaders[0].querySelector(".hint");
+          if (title) title.textContent = "Resume (24h) par device";
+          if (hint) hint.textContent = "CRITICAL + heap min/max";
+        }
+        if (cardHeaders[1]) {
+          const title = cardHeaders[1].querySelector("h2");
+          const hint = cardHeaders[1].querySelector(".hint");
+          if (title) title.textContent = "Heap (KB) dans le temps";
+          if (hint) hint.textContent = "100 dernieres entrees - 1 courbe / device";
+        }
+        if (cardHeaders[2]) {
+          const title = cardHeaders[2].querySelector("h2");
+          const hint = cardHeaders[2].querySelector(".hint");
+          if (title) title.textContent = "50 dernieres entrees";
+          if (hint) hint.textContent = "Rouge=CRITICAL - Orange=WARNING - Vert=OK";
+        }
+
+        dom.lastUpdated = document.getElementById("lastUpdated");
+        dom.apiStatus = document.getElementById("apiStatus");
+      }
+
+      function ensureChart() {
+        if (chart) return chart;
+        const ctx = document.getElementById("heapChart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: "line",
+          data: { labels: [], datasets: [] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "nearest", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y} KB` } },
+            },
+            scales: {
+              x: {
+                ticks: { color: "#92a0c2", autoSkip: true, maxRotation: 0, minRotation: 0 },
+                grid: { color: "rgba(255,255,255,0.06)" },
+              },
+              y: {
+                ticks: { color: "#92a0c2" },
+                grid: { color: "rgba(255,255,255,0.06)" },
+                title: { display: true, text: "heap_kb", color: "#92a0c2" },
+              },
+            },
+          },
+        });
+        return chart;
+      }
+
+      function renderLegend(datasets) {
+        if (!dom.chartLegend) return;
+        dom.chartLegend.innerHTML = "";
+
+        if (!datasets.length) {
+          const empty = document.createElement("span");
+          empty.className = "legendItem";
+          empty.textContent = "Aucune serie visible";
+          dom.chartLegend.appendChild(empty);
+          return;
+        }
+
+        for (const dataset of datasets) {
+          const item = document.createElement("span");
+          item.className = "legendItem";
+          item.innerHTML = `
+            <span class="legendSwatch" style="background:${escapeHtml(dataset.borderColor)}"></span>
+            <span class="mono">${escapeHtml(dataset.label)}</span>
+          `;
+          dom.chartLegend.appendChild(item);
+        }
+      }
+
+      function renderSummary(statsRows, logsRows) {
+        if (!dom.metricDevices) return;
+
+        const devices = new Set();
+        for (const row of statsRows || []) {
+          if (row?.device) devices.add(String(row.device));
+        }
+        for (const row of state.installRows || []) {
+          if (row?.device) devices.add(String(row.device));
+        }
+        if (!devices.size) {
+          for (const row of logsRows || []) {
+            if (row?.device) devices.add(String(row.device));
+          }
+        }
+
+        const criticalDevices = (statsRows || []).filter((row) => (toNumber(row?.critical_24h) ?? 0) > 0).length;
+        const latest = Array.isArray(logsRows) && logsRows.length ? logsRows[0] : null;
+
+        dom.metricDevices.textContent = String(devices.size);
+        dom.metricCritical.textContent = String(criticalDevices);
+        dom.metricLogs.textContent = String((logsRows || []).length);
+        dom.metricLastDevice.textContent = latest?.device ? String(latest.device) : "-";
+        dom.metricLastEvent.textContent = latest
+          ? `${String(latest.event || "event")} - ${formatTs(latest.timestamp)}`
+          : "Aucune donnee recente";
+      }
+
+      function updateFilterOptions(statsRows, logsRows, chartRows, installRows = []) {
+        if (!dom.deviceFilter) return;
+
+        const knownDevices = new Set();
+        for (const row of [...statsRows, ...logsRows, ...chartRows, ...installRows]) {
+          const device = String(row?.device ?? "");
+          if (device) knownDevices.add(device);
+        }
+
+        const devices = [...knownDevices].sort((a, b) => a.localeCompare(b));
+        const desiredValue = devices.includes(state.selectedDevice) ? state.selectedDevice : "";
+        const optionMarkup = devices
+          .map((device) => `<option value="${escapeHtml(device)}">${escapeHtml(device)}</option>`)
+          .join("");
+
+        dom.deviceFilter.innerHTML = `<option value="">Tous les devices</option>${optionMarkup}`;
+        dom.deviceFilter.value = desiredValue;
+        state.selectedDevice = desiredValue;
+        saveDeviceFilter(desiredValue);
+      }
+
+      function renderFilterMeta(filteredLogs, availableDevices) {
+        if (!dom.filterMeta) return;
+        const countLabel = `${availableDevices} device${availableDevices > 1 ? "s" : ""} disponible${availableDevices > 1 ? "s" : ""}`;
+        if (!state.selectedDevice) {
+          dom.filterMeta.textContent = `Tous les devices affiches - ${countLabel}`;
+          return;
+        }
+
+        dom.filterMeta.textContent = `${state.selectedDevice} - ${filteredLogs.length} log${filteredLogs.length > 1 ? "s" : ""} visible${filteredLogs.length > 1 ? "s" : ""}`;
+      }
+
+      function getLatestStatuses(rows) {
+        const latestByDevice = new Map();
+        for (const row of rows || []) {
+          const device = String(row?.device ?? "");
+          if (!device || latestByDevice.has(device)) continue;
+          latestByDevice.set(device, row);
+        }
+        return [...latestByDevice.values()];
+      }
+
+      function renderAlerts(logsRows) {
+        if (!dom.alertPanel || !dom.alertBadge || !dom.alertTitle || !dom.alertText || !dom.alertPills) return;
+
+        const latestRows = getLatestStatuses(logsRows);
+        const latestWarnings = latestRows.filter((row) => String(row?.status ?? "").toUpperCase() === "WARNING");
+        const latestCriticals = latestRows.filter((row) => String(row?.status ?? "").toUpperCase() === "CRITICAL");
+        const hasCritical = latestCriticals.length > 0;
+        const hasWarning = latestWarnings.length > 0;
+
+        dom.alertPanel.classList.remove("state-ok", "state-warn", "state-crit");
+        dom.alertPills.innerHTML = "";
+
+        if (hasCritical) {
+          dom.alertPanel.classList.add("state-crit");
+          setBadge(dom.alertBadge, { text: `${latestCriticals.length} CRITICAL`, level: "crit" });
+          dom.alertTitle.textContent = `${latestCriticals.length} device${latestCriticals.length > 1 ? "s" : ""} en etat critique`;
+          dom.alertText.textContent = hasWarning
+            ? `${latestWarnings.length} device${latestWarnings.length > 1 ? "s" : ""} supplementaire${latestWarnings.length > 1 ? "s" : ""} en WARNING.`
+            : "Intervention recommandee rapidement sur les devices listes ci-dessous.";
+        } else if (hasWarning) {
+          dom.alertPanel.classList.add("state-warn");
+          setBadge(dom.alertBadge, { text: `${latestWarnings.length} WARNING`, level: "warn" });
+          dom.alertTitle.textContent = `${latestWarnings.length} device${latestWarnings.length > 1 ? "s" : ""} en vigilance`;
+          dom.alertText.textContent = "Le dashboard surveille un niveau de risque modere sur les devices listes ci-dessous.";
+        } else {
+          dom.alertPanel.classList.add("state-ok");
+          setBadge(dom.alertBadge, { text: "OK", level: "ok" });
+          dom.alertTitle.textContent = latestRows.length ? "Aucune alerte active" : "En attente de donnees";
+          dom.alertText.textContent = latestRows.length
+            ? "Les derniers statuts connus sont stables pour les devices affiches."
+            : "Aucune donnee recente n'est disponible pour calculer un etat d'alerte.";
+        }
+
+        for (const row of [...latestCriticals, ...latestWarnings]) {
+          const pill = document.createElement("span");
+          const status = String(row?.status ?? "").toUpperCase();
+          pill.className = "alertPill";
+          pill.innerHTML = `
+            <span class="dot ${statusTone(status)}"></span>
+            <strong class="mono">${escapeHtml(row.device ?? "")}</strong>
+            <span>${escapeHtml(status)}</span>
+            <span>${escapeHtml(formatHeap(row.heap_kb))} KB</span>
+          `;
+          dom.alertPills.appendChild(pill);
+        }
+      }
+
+      function renderStats(rows) {
+        if (!rows.length) {
+          setEmptyState(dom.statsTableBody, 4, "Aucune statistique disponible.");
+          return;
+        }
+
+        dom.statsTableBody.innerHTML = "";
+        const sorted = [...rows].sort((a, b) => String(a.device).localeCompare(String(b.device)));
+        for (const r of sorted) {
+          const tr = document.createElement("tr");
+          const critical = toNumber(r.critical_24h) ?? 0;
+          tr.innerHTML = `
+            <td class="mono" data-label="Device">${escapeHtml(r.device ?? "")}</td>
+            <td data-label="Critical (24h)">
+              <span class="badge">
+                <span class="dot ${critical > 0 ? "crit" : "ok"}"></span>
+                ${escapeHtml(critical)}
+              </span>
+            </td>
+            <td class="mono">${escapeHtml(toNumber(r.min_heap_kb_24h) ?? "—")}</td>
+            <td class="mono">${escapeHtml(toNumber(r.max_heap_kb_24h) ?? "—")}</td>
+          `;
+          const statCells = tr.querySelectorAll("td");
+          if (statCells[2]) {
+            statCells[2].setAttribute("data-label", "Heap min (KB)");
+            statCells[2].textContent = formatHeap(r.min_heap_kb_24h);
+          }
+          if (statCells[3]) {
+            statCells[3].setAttribute("data-label", "Heap max (KB)");
+            statCells[3].textContent = formatHeap(r.max_heap_kb_24h);
+          }
+          dom.statsTableBody.appendChild(tr);
+        }
+      }
+
+      function renderLogs(rows) {
+        if (!rows.length) {
+          setEmptyState(dom.logsTableBody, 6, "Aucun log disponible.");
+          return;
+        }
+
+        dom.logsTableBody.innerHTML = "";
+        for (const r of rows) {
+          const status = String(r.status ?? "UNKNOWN").toUpperCase();
+          const tr = document.createElement("tr");
+          tr.className = statusClass(status);
+          tr.innerHTML = `
+            <td class="mono" data-label="Timestamp">${escapeHtml(formatTs(r.timestamp))}</td>
+            <td class="mono" data-label="Device">${escapeHtml(r.device ?? "")}</td>
+            <td class="mono" data-label="Heap KB">${escapeHtml(formatHeap(r.heap_kb))}</td>
+            <td class="mono" data-label="Uptime">${escapeHtml(r.uptime ?? "")}</td>
+            <td class="mono" data-label="Event">${escapeHtml(r.event ?? "")}</td>
+            <td class="mono" data-label="Status">
+              <span class="badge">
+                <span class="dot ${statusTone(status)}"></span>
+                ${escapeHtml(status)}
+              </span>
+            </td>
+          `;
+          dom.logsTableBody.appendChild(tr);
+        }
+      }
+
+
+      function renderInstallations(rows) {
+        if (!dom.installTableBody) return;
+        if (!rows.length) {
+          setEmptyState(dom.installTableBody, 7, "Aucune fiche installation recue.");
+          return;
+        }
+
+        dom.installTableBody.innerHTML = "";
+        for (const r of rows) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="mono" data-label="Timestamp">${escapeHtml(formatTs(r.timestamp))}</td>
+            <td class="mono" data-label="Device">${escapeHtml(r.device ?? "")}</td>
+            <td class="mono" data-label="Modele">${escapeHtml(r.device_name ?? "")}</td>
+            <td class="mono" data-label="MAC">${escapeHtml(r.mac ?? "")}</td>
+            <td class="mono" data-label="Serveur SUPLA">${escapeHtml(r.supla_server ?? "")}</td>
+            <td class="mono" data-label="Email">${escapeHtml(r.email ?? "")}</td>
+            <td class="mono" data-label="Firmware">${escapeHtml(r.firmware ?? "")}</td>
+          `;
+          dom.installTableBody.appendChild(tr);
+        }
+      }
+
+      function renderChart(rows) {
+        // Objectif: aligner toutes les séries sur les mêmes timestamps.
+        const points = [];
+        for (const r of rows) {
+          const device = String(r.device ?? "");
+          const heap = toNumber(r.heap_kb);
+          if (!device || heap === null) continue;
+          points.push({ device, ts: r.timestamp, heap });
+        }
+
+        // Les rows arrivent en DESC: on met en ordre croissant pour l'affichage.
+        points.reverse();
+
+        const tsSet = new Set(points.map((p) => String(p.ts ?? "")));
+        const tsList = [...tsSet].filter(Boolean);
+        tsList.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+        const labels = tsList.map((ts) => formatTs(ts));
+
+        const byDeviceByTs = new Map();
+        for (const p of points) {
+          if (!byDeviceByTs.has(p.device)) byDeviceByTs.set(p.device, new Map());
+          byDeviceByTs.get(p.device).set(String(p.ts), p.heap);
+        }
+
+        const datasets = [];
+        const devices = [...byDeviceByTs.keys()].sort((a, b) => a.localeCompare(b));
+        for (const device of devices) {
+          const m = byDeviceByTs.get(device);
+          datasets.push({
+            label: device,
+            data: tsList.map((ts) => (m.has(ts) ? m.get(ts) : null)),
+            borderColor: stableColorForKey(device),
+            backgroundColor: "transparent",
+            borderWidth: 2.5,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            spanGaps: true,
+            tension: 0.28,
+          });
+        }
+
+        renderLegend(datasets);
+
+        const c = ensureChart();
+        c.data.labels = labels;
+        c.data.datasets = datasets;
+        c.update();
+      }
+
+      function renderFromState() {
+        const filteredStats = filterRowsByDevice(state.statsRows, state.selectedDevice);
+        const filteredLogs = filterRowsByDevice(state.logsRows, state.selectedDevice);
+        const filteredChart = filterRowsByDevice(state.chartRows, state.selectedDevice);
+        const filteredInstall = filterRowsByDevice(state.installRows, state.selectedDevice);
+        const availableDevices = new Set([
+          ...state.statsRows.map((row) => String(row?.device ?? "")).filter(Boolean),
+          ...state.logsRows.map((row) => String(row?.device ?? "")).filter(Boolean),
+          ...state.chartRows.map((row) => String(row?.device ?? "")).filter(Boolean),
+          ...state.installRows.map((row) => String(row?.device ?? "")).filter(Boolean),
+        ]).size;
+
+        renderSummary(filteredStats, filteredLogs);
+        renderFilterMeta(filteredLogs, availableDevices);
+        renderAlerts(filteredLogs);
+        renderStats(filteredStats);
+        renderLogs(filteredLogs);
+        renderInstallations(filteredInstall);
+        renderChart(filteredChart);
+      }
+
+      function showError(el, err) {
+        el.hidden = false;
+        el.textContent = String(err?.message || err);
+      }
+
+      function hideError(el) {
+        el.hidden = true;
+        el.textContent = "";
+      }
+
+      async function refreshOnce() {
+        try {
+          await fetchJson(API.health());
+          setBadge(dom.apiStatus, { text: "OK", level: "ok" });
+        } catch (e) {
+          setBadge(dom.apiStatus, { text: "DOWN", level: "crit" });
+        }
+
+        const [stats, logs, chart, installs] = await Promise.allSettled([
+          fetchJson(API.stats()),
+          fetchJson(API.logs(50)),
+          fetchJson(API.chart(100)),
+          fetchJson(API.installations(100)),
+        ]);
+
+        const statsRows = stats.status === "fulfilled" && stats.value?.ok ? stats.value.rows || [] : [];
+        const logsRows = logs.status === "fulfilled" && logs.value?.ok ? logs.value.rows || [] : [];
+        const chartRows = chart.status === "fulfilled" && chart.value?.ok ? chart.value.rows || [] : [];
+        const installRows = installs.status === "fulfilled" && installs.value?.ok ? installs.value.rows || [] : [];
+
+        state.statsRows = statsRows;
+        state.logsRows = logsRows;
+        state.chartRows = chartRows;
+        state.installRows = installRows;
+        updateFilterOptions(statsRows, logsRows, chartRows, installRows);
+
+        if (stats.status === "fulfilled" && stats.value?.ok) {
+          hideError(dom.statsError);
+        } else {
+          showError(dom.statsError, stats.reason || new Error("Erreur stats"));
+        }
+
+        if (logs.status === "fulfilled" && logs.value?.ok) {
+          hideError(dom.logsError);
+        } else {
+          showError(dom.logsError, logs.reason || new Error("Erreur logs"));
+        }
+
+        if (chart.status === "fulfilled" && chart.value?.ok) {
+          hideError(dom.chartError);
+        } else {
+          renderLegend([]);
+          showError(dom.chartError, chart.reason || new Error("Erreur chart"));
+        }
+
+        if (installs.status === "fulfilled" && installs.value?.ok) {
+          hideError(dom.installError);
+        } else {
+          showError(dom.installError, installs.reason || new Error("Erreur installations"));
+        }
+
+        renderFromState();
+
+        dom.lastUpdated.textContent = new Date().toLocaleString("fr-FR", { hour12: false });
+      }
+
+      async function start() {
+        normalizeStaticLabels();
+        state.selectedDevice = getSavedDeviceFilter();
+        if (dom.deviceFilter) {
+          dom.deviceFilter.value = state.selectedDevice;
+          dom.deviceFilter.addEventListener("change", (event) => {
+            state.selectedDevice = String(event.target.value || "");
+            saveDeviceFilter(state.selectedDevice);
+            renderFromState();
+          });
+        }
+
+        await refreshOnce();
+        setInterval(() => {
+          refreshOnce().catch(() => {});
+        }, REFRESH_MS);
+      }
+
+      start().catch((e) => {
+        showError(dom.logsError, e);
+      });
+    </script>
+  </body>
+</html>

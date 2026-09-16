@@ -1,0 +1,90 @@
+###############################################################################
+# SpiderHome Fleet Monitor
+#
+#   web        : Nginx — Angular + reverse-proxy FastCGI vers l'API   → :8089
+#   api        : PHP-FPM — Laravel (migrations au démarrage)
+#   scheduler  : même image, exécute « artisan schedule:run » chaque minute
+#                (c'est lui qui fait vivre la synchronisation automatique)
+#
+# La base MySQL n'est PAS dans cette stack : elle tourne déjà dans le conteneur
+# « mysql_central » (port hôte 3307). Voir .env.docker.
+#
+#   docker compose --env-file .env.docker up -d --build
+###############################################################################
+
+name: spiderhome-monitor
+
+services:
+
+  api:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    image: spiderhome-monitor-api:latest
+    container_name: spiderhome_monitor_api
+    restart: unless-stopped
+    env_file: .env.docker
+    environment:
+      RUN_MIGRATIONS: "true"
+    volumes:
+      - api_storage:/var/www/html/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "php -r 'exit(0);'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - spiderhome
+
+  scheduler:
+    image: spiderhome-monitor-api:latest
+    container_name: spiderhome_monitor_scheduler
+    restart: unless-stopped
+    depends_on:
+      - api
+    env_file: .env.docker
+    environment:
+      RUN_MIGRATIONS: "false"
+    volumes:
+      - api_storage:/var/www/html/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >
+      sh -c "while true; do
+               php artisan schedule:run --no-interaction >> /dev/null 2>&1;
+               sleep 60;
+             done"
+    networks:
+      - spiderhome
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/web.Dockerfile
+    image: spiderhome-monitor-web:latest
+    container_name: spiderhome_monitor_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      # 8089 : libre sur le VPS (8082-8088 déjà pris).
+      # À router ensuite via nginx-proxy-manager vers monitor.spiderhome.org.
+      - "8089:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - spiderhome
+
+volumes:
+  api_storage:
+
+networks:
+  spiderhome:
+    driver: bridge
