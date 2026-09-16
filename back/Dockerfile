@@ -51,10 +51,12 @@ RUN composer install \
 # ── Code applicatif ──────────────────────────────────────────────────────────
 COPY . .
 
-RUN composer dump-autoload --optimize --no-dev \
-    && mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstrap/cache \
+# bootstrap/cache doit exister AVANT dump-autoload : le hook post-autoload-dump
+# de Laravel (package:discover) écrit dedans dès la fin de la commande.
+RUN mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
+    && chmod -R 775 storage bootstrap/cache \
+    && composer dump-autoload --optimize --no-dev
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
