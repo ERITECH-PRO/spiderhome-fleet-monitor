@@ -34,7 +34,9 @@ services:
       # Vérifie que PHP-FPM écoute réellement sur le port 9000 — pas
       # seulement que l'interpréteur PHP fonctionne (entrypoint.sh peut
       # encore être en train de migrer quand ce process démarre).
-      test: ["CMD-SHELL", "php -r '$c=@fsockopen(\"127.0.0.1\",9000);exit($c?0:1);'"]
+      # $$ (et non $) : docker compose interpole tout $VAR d'un fichier
+      # compose AVANT de l'envoyer au conteneur ; $$ lui échappe le signe.
+      test: ["CMD-SHELL", "php -r '$$c=@fsockopen(\"127.0.0.1\",9000);exit($$c?0:1);'"]
       interval: 10s
       timeout: 5s
       retries: 6
