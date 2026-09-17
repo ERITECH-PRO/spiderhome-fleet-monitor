@@ -10,7 +10,7 @@ import { ActivatedRoute } from '@angular/router';
 import {
   DashboardService,
   FleetOverviewResponse, FleetCounters, FleetAlert, DeviceRef,
-  FleetEvent, HeapPoint, HeapThresholds
+  FleetEvent, HeapPoint, HeapThresholds, pickDefaultHeapDevice
 } from '../services/dashboard.service';
 import { AlertService, DeviceAlert } from '../services/alert.service';
 import { HeapChartComponent } from '../shared/components/heap-chart/heap-chart.component';
@@ -264,7 +264,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           this.devicesList = overview.devices;
 
           if (this.devicesList.length > 0 && !this.devicesList.some(d => d.serial_number === this.selectedHeapDevice)) {
-            this.selectedHeapDevice = this.devicesList[0].serial_number;
+            this.selectedHeapDevice = pickDefaultHeapDevice(this.devicesList)!.serial_number;
           }
         }
 
@@ -311,7 +311,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
           // If current selected heap device is not in list, fallback to first
           if (this.devicesList.length > 0 && !this.devicesList.some(d => d.serial_number === this.selectedHeapDevice)) {
-            this.selectedHeapDevice = this.devicesList[0].serial_number;
+            this.selectedHeapDevice = pickDefaultHeapDevice(this.devicesList)!.serial_number;
             this.fetchHeapHistory();
           }
         }

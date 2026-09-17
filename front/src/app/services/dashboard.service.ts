@@ -49,6 +49,29 @@ export interface DeviceRef {
   last_seen_at?: string;
 }
 
+/**
+ * Choisit un module par défaut pertinent pour le graphique Heap : le plus
+ * récemment vu parmi ceux en ligne / en alerte, plutôt que le premier de la
+ * liste au hasard — qui peut très bien être un module hors ligne depuis des
+ * mois et ne rien afficher sur la période par défaut (7 jours).
+ */
+export function pickDefaultHeapDevice(devices: DeviceRef[]): DeviceRef | undefined {
+  if (!devices || devices.length === 0) return undefined;
+
+  const byRecency = (a: DeviceRef, b: DeviceRef) =>
+    new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime();
+
+  const active = devices
+    .filter(d => d.status === 'online' || d.status === 'alert')
+    .sort(byRecency);
+
+  if (active.length > 0) return active[0];
+
+  // Aucun module en ligne : on prend quand même le plus récemment vu,
+  // pour éviter d'afficher un module éteint depuis des mois.
+  return [...devices].sort(byRecency)[0];
+}
+
 export interface FleetAlert {
   id: number;
   type: string;

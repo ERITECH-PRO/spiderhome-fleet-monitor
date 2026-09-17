@@ -10,7 +10,7 @@ import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import {
   DashboardService,
   FleetEvent, HeapPoint, HeapThresholds,
-  FleetHeapHistoryResponse, DeviceRef
+  FleetHeapHistoryResponse, DeviceRef, pickDefaultHeapDevice
 } from '../services/dashboard.service';
 import { HeapChartComponent } from '../shared/components/heap-chart/heap-chart.component';
 import { IconComponent } from '../shared/components/icon/icon.component';
@@ -172,7 +172,7 @@ export class EventsComponent implements OnInit, OnDestroy {
         if (res.ok) {
           this.devicesList = res.devices;
           if (!this.selectedHeapDevice && res.devices.length > 0) {
-            this.selectedHeapDevice = res.devices[0].serial_number;
+            this.selectedHeapDevice = pickDefaultHeapDevice(res.devices)!.serial_number;
             this.fetchHeapHistory();
           }
         }
