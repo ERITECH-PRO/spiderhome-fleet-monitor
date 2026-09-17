@@ -271,6 +271,26 @@ class FleetSyncService
             ->get()
             ->keyBy(fn ($row) => (string) $row->device);
 
+        // Modules qui envoient de la télémétrie mais n'ont jamais eu de ligne
+        // `module_installs` (firmware ancien, workflow n8n manqué, etc.).
+        // Sans ce provisionnement, ils n'apparaîtraient jamais dans la
+        // plateforme alors qu'ils sont bien vivants dans `heap_logs`.
+        $knownKeys = Device::query()
+            ->pluck('legacy_device_key')
+            ->merge(Device::query()->pluck('serial_number'))
+            ->filter()
+            ->unique();
+
+        foreach ($latest->keys() as $key) {
+            if ($key === '' || $knownKeys->contains($key)) {
+                continue;
+            }
+
+            $this->provisionDevice($key);
+            $knownKeys->push($key);
+            $stats['devices_created']++;
+        }
+
         $offlineAfter = (int) config('spiderhome.offline_after_minutes', 30);
 
         Device::with('site')->chunkById(200, function ($devices) use ($latest, $offlineAfter, &$stats) {
