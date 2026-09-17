@@ -113,7 +113,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   devicesList: DeviceRef[] = [];
 
   // ── Heap Graph State ────────────────────────────────────────────────────────
-  selectedHeapDevice = 'SPH-2026-0001';
+  // Renseigné une fois la liste réelle des modules chargée (fetchOverview) —
+  // jamais un numéro de série de démonstration fictif.
+  selectedHeapDevice = '';
   selectedHeapPeriod = '7d';
   heapPoints: HeapPoint[] = [];
   heapThresholds: HeapThresholds = { sain_min: 20.0, surveillance_min: 10.0, critique_max: 10.0 };

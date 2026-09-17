@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class DeviceEvent extends Model
 {
     protected $fillable = [
-        'device_id', 'type', 'severity', 'value', 'message', 'occurred_at',
+        'device_id', 'source_log_id', 'type', 'severity', 'value', 'message', 'occurred_at',
     ];
 
     protected $casts = [

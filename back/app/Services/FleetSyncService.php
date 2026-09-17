@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Alert;
 use App\Models\Customer;
 use App\Models\Device;
+use App\Models\DeviceEvent;
 use App\Models\DeviceModel;
 use App\Models\Site;
 use Carbon\Carbon;
@@ -51,10 +52,12 @@ class FleetSyncService
             'devices_updated'   => 0,
             'alerts_opened'     => 0,
             'alerts_resolved'   => 0,
+            'events_imported'   => 0,
         ];
 
         $this->syncInstalls($stats);
         $this->syncTelemetry($stats);
+        $this->importEvents($stats);
 
         return $stats;
     }
@@ -383,7 +386,88 @@ class FleetSyncService
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 3. Alertes
+    // 3. Événements : heap_logs → device_events (onglet « Événements »)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Alimente `device_events` à partir des lignes notables de `heap_logs` :
+     * changements d'état (status WARNING/CRITICAL) et événements explicites
+     * publiés par le module (colonne `event` : boot, watchdog_reset,
+     * wifi_lost, supla_offline, update_required…).
+     *
+     * Idempotent : chaque ligne `heap_logs.id` n'est importée qu'une fois,
+     * grâce à `device_events.source_log_id` (unique). Ne modifie jamais
+     * `heap_logs`.
+     */
+    private function importEvents(array &$stats): void
+    {
+        $lookback = (int) config('spiderhome.sync.telemetry_lookback_hours', 72);
+
+        // Déjà importés sur la fenêtre observée : évite les doublons sans
+        // dépendre d'un simple "max(id)", qui perdrait les lignes ignorées
+        // le temps qu'un module se provisionne.
+        $alreadyImported = DeviceEvent::when($lookback > 0, fn ($q) => $q->where('occurred_at', '>=', now()->subHours($lookback + 1)))
+            ->whereNotNull('source_log_id')
+            ->pluck('source_log_id');
+
+        $rows = DB::connection($this->legacy)
+            ->table('heap_logs')
+            ->when($lookback > 0, fn ($q) => $q->where('timestamp', '>=', now()->subHours($lookback)))
+            ->whereNotIn('id', $alreadyImported)
+            ->where(function ($q) {
+                $q->whereIn(DB::raw('UPPER(status)'), ['WARNING', 'WARN', 'CRITICAL', 'CRIT', 'FATAL'])
+                  ->orWhereIn(DB::raw('UPPER(level)'), ['WARNING', 'WARN', 'CRITICAL', 'CRIT', 'FATAL', 'ERROR'])
+                  ->orWhere(function ($q2) {
+                      // Événement explicite du module, hors mesures de routine.
+                      $q2->whereNotNull('event')
+                         ->where('event', '!=', '')
+                         ->whereNotIn(DB::raw('LOWER(event)'), ['status', 'heartbeat', 'measure', 'reading']);
+                  });
+            })
+            ->orderBy('id')
+            ->limit(2000) // borne de sécurité par passe ; le reste suit au prochain tick
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        // Résout device_id une seule fois par clé pour éviter N requêtes.
+        $devicesByKey = Device::query()
+            ->whereIn('legacy_device_key', $rows->pluck('device')->unique())
+            ->orWhereIn('serial_number', $rows->pluck('device')->unique())
+            ->get()
+            ->keyBy(fn ($d) => $d->legacy_device_key ?? $d->serial_number);
+
+        foreach ($rows as $row) {
+            $device = $devicesByKey[$row->device] ?? null;
+            if (! $device) {
+                continue; // module pas encore provisionné : repris au prochain passage
+            }
+
+            $rawType = $row->event ?: ($row->status ?? $row->level ?? null);
+            $type    = EventNormalizerService::normalizeType($rawType);
+            $severity = EventNormalizerService::normalizeSeverity(
+                $row->status ?? $row->level ?? null,
+                $type,
+                $row->heap_kb ?? $row->heap ?? null
+            );
+
+            DeviceEvent::create([
+                'device_id'     => $device->id,
+                'source_log_id' => $row->id,
+                'type'          => $type,
+                'severity'      => $severity,
+                'value'         => $row->heap_kb ?? $row->heap ?? null,
+                'message'       => $row->note ?: null,
+                'occurred_at'   => $row->timestamp,
+            ]);
+            $stats['events_imported']++;
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 4. Alertes
     // ────────────────────────────────────────────────────────────────────────
 
     private function reconcileHealthAlert(Device $device, string $severity, ?float $heapBytes, array &$stats): void
