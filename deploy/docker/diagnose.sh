@@ -59,7 +59,7 @@ docker compose exec -T api php artisan tinker --execute="echo config('app.key') 
 
 echo
 echo "── 8. Chaîne web → api en conditions réelles ───────────────────────────"
-docker compose exec -T web sh -c "wget -qO- http://localhost/api/health || echo 'ÉCHEC proxy web → api'"
+docker compose exec -T web sh -c "wget -qO- http://127.0.0.1/api/health || echo 'ÉCHEC proxy web → api'"
 
 echo
 echo "── 9. API vue depuis l'extérieur ───────────────────────────────────────"
