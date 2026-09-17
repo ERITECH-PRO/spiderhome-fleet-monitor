@@ -31,10 +31,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "php -r 'exit(0);'"]
-      interval: 30s
+      # Vérifie que PHP-FPM écoute réellement sur le port 9000 — pas
+      # seulement que l'interpréteur PHP fonctionne (entrypoint.sh peut
+      # encore être en train de migrer quand ce process démarre).
+      test: ["CMD-SHELL", "php -r '$c=@fsockopen(\"127.0.0.1\",9000);exit($c?0:1);'"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
       start_period: 40s
     networks:
       - spiderhome
@@ -68,7 +71,8 @@ services:
     container_name: spiderhome_monitor_web
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       # 8089 : libre sur le VPS (8082-8088 déjà pris).
       # À router ensuite via nginx-proxy-manager vers monitor.spiderhome.org.
