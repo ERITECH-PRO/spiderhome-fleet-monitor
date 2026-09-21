@@ -39,7 +39,8 @@ export class UserService {
   constructor(private http: HttpClient) {}
 
   getAll(role?: string): Observable<{ ok: boolean; users: AppUser[] }> {
-    const params = role ? { role } : {};
+    const params: Record<string, string> = {};
+    if (role) params['role'] = role;
     return this.http.get<{ ok: boolean; users: AppUser[] }>(this.base, { params });
   }
 
