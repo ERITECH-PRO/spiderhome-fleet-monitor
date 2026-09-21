@@ -67,7 +67,7 @@ Route::middleware('auth:sanctum')->group(function () use ($staff, $manage) {
     // Écriture : admin/support uniquement — un client ne crée jamais un
     // site ou un module directement, ils viennent du provisionnement auto.
     Route::get('devices/{id}/health', [DeviceController::class, 'health']);
-    Route::get('devices/{device}/qr', [DeviceController::class, 'qr']);
+    Route::get('devices/{id}/qr', [DeviceController::class, 'qr']);
     Route::apiResource('customers', CustomerController::class)
         ->except(['store', 'update', 'destroy']);
     Route::apiResource('customers', CustomerController::class)

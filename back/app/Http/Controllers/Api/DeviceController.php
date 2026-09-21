@@ -149,12 +149,30 @@ class DeviceController extends Controller
     }
 
     /**
-     * GET /api/devices/{device}/qr
+     * GET /api/devices/{id}/qr
      * Génère le QR code vectoriel SVG et la charge utile pour impression/scan.
+     *
+     * Accepte id numérique, guid, serial_number, mac ou legacy_device_key —
+     * comme health($id) — plutôt que le binding Eloquent implicite par id
+     * seul : le frontend (device-health-modal) passe le même identifiant
+     * aux deux endpoints indifféremment.
      */
-    public function qr(Device $device)
+    public function qr($id)
     {
-        $device->load(['site.customer', 'model']);
+        $device = Device::where('id', $id)
+            ->orWhere('guid', $id)
+            ->orWhere('serial_number', $id)
+            ->orWhere('mac', $id)
+            ->orWhere('legacy_device_key', $id)
+            ->with(['site.customer', 'model'])
+            ->first();
+
+        if (! $device) {
+            return response()->json([
+                'error'   => 'DEVICE_NOT_FOUND',
+                'message' => "Module introuvable : \"{$id}\"",
+            ], 404);
+        }
 
         $payload = [
             'id'            => $device->id,
