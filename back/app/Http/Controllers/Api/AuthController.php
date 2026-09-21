@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
 
 class AuthController extends Controller
 {
@@ -19,6 +20,10 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
+            // Échec de connexion : REC-11 (audit) — utile pour détecter du
+            // bourrage de mot de passe. Ne révèle jamais si l'e-mail existe.
+            AuditLog::record('auth.login_failed', null, ['email' => $request->email]);
+
             return response()->json([
                 'ok' => false,
                 'message' => 'Identifiants incorrects.'
@@ -30,6 +35,8 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        AuditLog::record('auth.login', $user);
+
         return response()->json([
             'ok' => true,
             'access_token' => $token,
@@ -39,12 +46,15 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'customer_id' => $user->customer_id,
             ]
         ]);
     }
 
     public function logout(Request $request)
     {
+        AuditLog::record('auth.logout', $request->user());
+
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([

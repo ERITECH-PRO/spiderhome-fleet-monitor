@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CustomerRequest;
+use App\Models\AuditLog;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 
@@ -49,6 +50,7 @@ class CustomerController extends Controller
             $data['server_address'] = 'https://cloud.spiderhome.org/';
         }
         $customer = Customer::create($data);
+        AuditLog::record('customer.created', $customer);
         return response()->json($customer->loadCount(['sites', 'devices']), 201);
     }
 
@@ -72,6 +74,7 @@ class CustomerController extends Controller
             $data['server_address'] = 'https://cloud.spiderhome.org/';
         }
         $customer->update($data);
+        AuditLog::record('customer.updated', $customer, ['fields' => array_keys($data)]);
         return response()->json($customer->loadCount(['sites', 'devices']));
     }
 
@@ -87,6 +90,7 @@ class CustomerController extends Controller
             ], 422);
         }
 
+        AuditLog::record('customer.deleted', $customer, ['name' => $customer->name]);
         $customer->delete();
         return response()->json(['message' => 'Client supprimé avec succès.'], 200);
     }

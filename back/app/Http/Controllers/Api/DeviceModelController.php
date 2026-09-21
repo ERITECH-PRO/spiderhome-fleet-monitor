@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\DeviceModelRequest;
+use App\Models\AuditLog;
 use App\Models\DeviceModel;
 use Illuminate\Http\Request;
 
@@ -42,6 +43,7 @@ class DeviceModelController extends Controller
     public function store(DeviceModelRequest $request)
     {
         $model = DeviceModel::create($request->validated());
+        AuditLog::record('device-model.created', $model);
         return response()->json($model->loadCount('devices'), 201);
     }
 
@@ -61,6 +63,7 @@ class DeviceModelController extends Controller
     public function update(DeviceModelRequest $request, DeviceModel $deviceModel)
     {
         $deviceModel->update($request->validated());
+        AuditLog::record('device-model.updated', $deviceModel);
         return response()->json($deviceModel->loadCount('devices'));
     }
 
@@ -74,6 +77,7 @@ class DeviceModelController extends Controller
                 'message' => 'Impossible de supprimer ce modèle : des modules y sont associés.'
             ], 422);
         }
+        AuditLog::record('device-model.deleted', $deviceModel, ['name' => $deviceModel->name]);
         $deviceModel->delete();
         return response()->json(['message' => 'Modèle supprimé avec succès.'], 200);
     }

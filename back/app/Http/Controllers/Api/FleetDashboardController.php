@@ -130,6 +130,7 @@ class FleetDashboardController extends Controller
                     'status'        => $dev->status,
                     'health'        => $health,
                     'health_reason' => $evaluation['health_reason'],
+                    'health_score'  => $evaluation['health_score'] ?? null,
                     'current_heap'  => $heapKb,
                     'last_seen_at'  => $dev->last_seen_at?->toIso8601String(),
                 ];
@@ -160,7 +161,7 @@ class FleetDashboardController extends Controller
     /**
      * GET /api/fleet/events
      * Liste filtrable et paginée des événements de la flotte.
-     * Types supportés : BOOT, WATCHDOG_RESET, LOW_HEAP, WIFI_LOST, SUPLA_OFFLINE, UPDATE_REQUIRED
+     * Types supportés : voir App\Services\EventNormalizerService::CANONICAL_TYPES
      */
     public function events(Request $request): JsonResponse
     {
@@ -286,6 +287,20 @@ class FleetDashboardController extends Controller
                 ->orWhere('mac', $deviceSerial)
                 ->orWhere('legacy_device_key', $deviceSerial)
                 ->first();
+
+            // Isolation client : le scope global sur Device rend $device
+            // introuvable si le module appartient à un autre client — mais
+            // sans ce contrôle explicite, la recherche par clé brute
+            // ci-dessous retomberait sur $deviceSerial tel quel et
+            // continuerait d'interroger heap_logs directement, contournant
+            // l'isolation. On refuse donc ici plutôt que de laisser filer.
+            if ($request->user()->role === \App\Models\User::ROLE_CLIENT && ! $device) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'DEVICE_NOT_FOUND',
+                    'message' => 'Module introuvable.',
+                ], 404);
+            }
 
             $targetSerials = array_filter(array_unique([
                 $deviceSerial,

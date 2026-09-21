@@ -9,7 +9,13 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  customer_id?: number | null;
 }
+
+/** Rôles internes (par opposition au compte client) — reflète App\Models\User::STAFF_ROLES côté API. */
+export const STAFF_ROLES = ['admin', 'support', 'technician', 'quality'];
+/** Rôles pouvant créer/modifier/supprimer le référentiel (clients, sites, modules, modèles). */
+export const MANAGE_ROLES = ['admin', 'support'];
 
 @Injectable({
   providedIn: 'root'
@@ -68,6 +74,39 @@ export class AuthService {
 
   public get currentUserValue(): User | null {
     return this.currentUserSubject.value;
+  }
+
+  // ── Rôle courant — reflète les mêmes règles que le backend (routes/api.php) ──
+
+  get role(): string | null {
+    return this.currentUserValue?.role ?? null;
+  }
+
+  /** true pour admin/support — peuvent créer/modifier/supprimer le référentiel métier. */
+  canManageFleet(): boolean {
+    return MANAGE_ROLES.includes(this.role ?? '');
+  }
+
+  /** true pour admin/support/technician — peuvent agir sur les alertes et le statut SAV. */
+  canManageAlerts(): boolean {
+    return STAFF_ROLES.includes(this.role ?? '') && this.role !== 'quality';
+  }
+
+  isAdmin(): boolean {
+    return this.role === 'admin';
+  }
+
+  isClient(): boolean {
+    return this.role === 'client';
+  }
+
+  isStaff(): boolean {
+    return STAFF_ROLES.includes(this.role ?? '');
+  }
+
+  /** admin/support/quality — a accès au journal d'audit. */
+  canViewAudit(): boolean {
+    return ['admin', 'support', 'quality'].includes(this.role ?? '');
   }
 
   login(email: string, password: string): Observable<any> {

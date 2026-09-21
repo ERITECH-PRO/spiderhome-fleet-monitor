@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SiteRequest;
+use App\Models\AuditLog;
 use App\Models\Site;
 use Illuminate\Http\Request;
 
@@ -43,6 +44,7 @@ class SiteController extends Controller
     public function store(SiteRequest $request)
     {
         $site = Site::create($request->validated());
+        AuditLog::record('site.created', $site);
         return response()->json($site->load('customer')->loadCount('devices'), 201);
     }
 
@@ -62,6 +64,7 @@ class SiteController extends Controller
     public function update(SiteRequest $request, Site $site)
     {
         $site->update($request->validated());
+        AuditLog::record('site.updated', $site);
         return response()->json($site->load('customer')->loadCount('devices'));
     }
 
@@ -77,6 +80,7 @@ class SiteController extends Controller
             ], 422);
         }
 
+        AuditLog::record('site.deleted', $site, ['name' => $site->name]);
         $site->delete();
         return response()->json(['message' => 'Site supprimé avec succès.'], 200);
     }

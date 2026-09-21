@@ -2,6 +2,7 @@ import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CustomerService, Customer } from '../services/customer.service';
+import { AuthService } from '../services/auth.service';
 import { PageCacheService } from '../services/page-cache.service';
 import { ModalComponent } from '../shared/components/modal/modal.component';
 import { ConfirmModalComponent } from '../shared/components/confirm-modal/confirm-modal.component';
@@ -131,10 +132,11 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
 
               <!-- actions -->
               <td class="text-right">
-                <div class="table-actions">
+                <div class="table-actions" *ngIf="auth.canManageFleet(); else readOnlyBadge">
                   <app-button variant="icon" size="sm" iconName="pencil" ariaLabel="Modifier la fiche client" tooltip="Modifier les informations" (btnClick)="openEdit(c)"></app-button>
                   <app-button variant="icon" size="sm" iconName="trash" ariaLabel="Supprimer le client" tooltip="Supprimer" [isDanger]="true" (btnClick)="promptDelete(c)"></app-button>
                 </div>
+                <ng-template #readOnlyBadge><span class="text-muted text-xs">—</span></ng-template>
               </td>
             </tr>
 
@@ -372,7 +374,8 @@ export class CustomersComponent implements OnInit {
   constructor(
     private customerService: CustomerService,
     private cacheService: PageCacheService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    public auth: AuthService
   ) {}
 
   ngOnInit() {

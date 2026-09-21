@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Alert;
+use App\Models\AuditLog;
 use App\Services\EventNormalizerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -106,6 +107,8 @@ class AlertController extends Controller
             'acknowledged_at'  => now(),
         ]);
 
+        AuditLog::record('alert.acknowledged', $alert);
+
         return response()->json($this->formatAlert($alert->load(self::RELATIONS)));
     }
 
@@ -123,6 +126,8 @@ class AlertController extends Controller
             'resolved_at' => now(),
         ]);
 
+        AuditLog::record('alert.resolved', $alert);
+
         return response()->json($this->formatAlert($alert->load(self::RELATIONS)));
     }
 
@@ -137,6 +142,8 @@ class AlertController extends Controller
             'acknowledged_at'  => null,
             'resolved_at'      => null,
         ]);
+
+        AuditLog::record('alert.reopened', $alert);
 
         return response()->json($this->formatAlert($alert->load(self::RELATIONS)));
     }

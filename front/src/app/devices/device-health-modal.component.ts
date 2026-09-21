@@ -40,10 +40,34 @@ export type DiagTab = 'summary' | 'heap' | 'events' | 'all';
               <p class="diag-subtitle">Registre Métier, Installation & Télémétrie Legacy</p>
             </div>
           </div>
-          <button class="diag-close-btn" (click)="onClose()" aria-label="Fermer la boîte de dialogue" title="Fermer (Échap)">
-            <app-icon name="x" [size]="15" aria-hidden="true"></app-icon>
-          </button>
+          <div class="diag-header-actions">
+            <app-button variant="secondary" size="sm" iconName="qr-code" ariaLabel="Afficher le QR code du module"
+              tooltip="QR code (identification terrain)" (btnClick)="toggleQr()" [isLoading]="qrLoading">
+              QR code
+            </app-button>
+            <button class="diag-close-btn" (click)="onClose()" aria-label="Fermer la boîte de dialogue" title="Fermer (Échap)">
+              <app-icon name="x" [size]="15" aria-hidden="true"></app-icon>
+            </button>
+          </div>
         </header>
+
+        <!-- PANNEAU QR CODE -->
+        <div class="qr-panel" *ngIf="qrOpen">
+          <div class="qr-panel-inner">
+            <div class="qr-img-wrap" *ngIf="qrDataUrl && !qrLoading">
+              <img [src]="qrDataUrl" alt="QR code du module" width="200" height="200">
+            </div>
+            <div class="qr-loading" *ngIf="qrLoading">Génération du QR code…</div>
+            <div class="qr-error" *ngIf="qrError && !qrLoading">{{ qrError }}</div>
+            <div class="qr-meta" *ngIf="qrDataUrl && !qrLoading">
+              <p>À scanner sur site pour identifier ce module instantanément.</p>
+              <div class="qr-actions">
+                <app-button variant="secondary" size="sm" iconName="download" (btnClick)="downloadQr()">Télécharger</app-button>
+                <app-button variant="secondary" size="sm" iconName="printer" (btnClick)="printQr()">Imprimer</app-button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- NAVIGATION TABS -->
         <nav class="diag-tabs" *ngIf="!loading && !error && data?.module">
@@ -122,8 +146,16 @@ export type DiagTab = 'summary' | 'heap' | 'events' | 'all';
             <div class="health-pill" [ngClass]="'pill-' + data.module.health">
               <div class="pill-top">
                 <span class="pill-badge">ÉVALUATION : {{ data.module.health | uppercase }}</span>
+                <span class="pill-score" *ngIf="data.module.health_score !== null && data.module.health_score !== undefined">
+                  {{ data.module.health_score }}/100
+                </span>
               </div>
               <span class="pill-desc">{{ data.module.health_reason }}</span>
+              <ul class="score-breakdown" *ngIf="data.module.score_breakdown?.length">
+                <li *ngFor="let item of data.module.score_breakdown">
+                  <span class="pts">{{ item.points }}</span> {{ item.reason }}
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -360,6 +392,22 @@ export type DiagTab = 'summary' | 'heap' | 'events' | 'all';
     .diag-close-btn:hover { color: var(--heading); background: var(--card-hover); }
     .diag-close-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
+    .diag-header-actions { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+
+    .qr-panel {
+      border-bottom: 1px solid var(--border-color);
+      background: var(--card-bg-alt, var(--card-hover));
+      animation: fadeSlideDown 0.15s ease;
+    }
+    @keyframes fadeSlideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+    .qr-panel-inner { display: flex; align-items: center; gap: 1.5rem; padding: 1rem 1.5rem; flex-wrap: wrap; }
+    .qr-img-wrap { background: #fff; padding: 0.6rem; border-radius: 0.5rem; line-height: 0; flex-shrink: 0; }
+    .qr-loading, .qr-error { font-size: 0.85rem; color: var(--text-muted); padding: 1rem 0; }
+    .qr-error { color: var(--crit-text, #f87171); }
+    .qr-meta { font-size: 0.8rem; color: var(--text-secondary); max-width: 320px; }
+    .qr-meta p { margin: 0 0 0.6rem; }
+    .qr-actions { display: flex; gap: 0.5rem; }
+
     /* ── Navigation Tabs Bar ─────────────────────────────────────────────── */
     .diag-tabs {
       display: flex;
@@ -550,7 +598,11 @@ export type DiagTab = 'summary' | 'heap' | 'events' | 'all';
     .pill-surveillance { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
     .pill-critique   { background: var(--crit-bg); border-color: var(--crit-border); color: var(--crit-text); }
     .pill-badge { font-weight: 700; font-size: 0.74rem; letter-spacing: 0.05em; }
+    .pill-score { font-weight: 700; font-size: 0.78rem; opacity: 0.85; margin-left: 0.4rem; }
     .pill-desc  { font-size: 0.78rem; opacity: 0.9; }
+    .score-breakdown { list-style: none; margin: 0.35rem 0 0; padding: 0; font-size: 0.72rem; opacity: 0.85; }
+    .score-breakdown li { display: flex; gap: 0.4rem; padding: 0.1rem 0; }
+    .score-breakdown .pts { font-weight: 700; min-width: 2.2em; }
 
     /* ── 3 Cards Row ─────────────────────────────────────────────────────── */
     .cards-row {
@@ -667,6 +719,13 @@ export class DeviceHealthModalComponent implements OnChanges {
   error: string | null = null;
   data: DeviceHealthData | null = null;
 
+  // ── QR code (fiche module, cahier §7/§8) ────────────────────────────────
+  qrOpen = false;
+  qrLoading = false;
+  qrError: string | null = null;
+  qrDataUrl: string | null = null;
+  qrSerial: string | null = null;
+
   get safePoints(): HeapPoint[] {
     return (this.data?.module?.telemetry?.points || []) as HeapPoint[];
   }
@@ -676,6 +735,60 @@ export class DeviceHealthModalComponent implements OnChanges {
     private cdr: ChangeDetectorRef
   ) {}
 
+  toggleQr(): void {
+    this.qrOpen = !this.qrOpen;
+    if (this.qrOpen && !this.qrDataUrl && !this.qrLoading) {
+      this.loadQr();
+    }
+  }
+
+  private loadQr(): void {
+    if (!this.deviceId) return;
+    this.qrLoading = true;
+    this.qrError = null;
+    this.cdr.markForCheck();
+
+    this.http.get<{ data_url: string; device: { serial_number: string } }>(
+      `${environment.apiUrl}/devices/${this.deviceId}/qr`
+    ).subscribe({
+      next: (res) => {
+        this.qrDataUrl = res.data_url;
+        this.qrSerial = res.device?.serial_number ?? String(this.deviceId);
+        this.qrLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.qrError = 'Impossible de générer le QR code pour ce module.';
+        this.qrLoading = false;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  downloadQr(): void {
+    if (!this.qrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = this.qrDataUrl;
+    a.download = `qr-${this.qrSerial || this.deviceId}.svg`;
+    a.click();
+  }
+
+  printQr(): void {
+    if (!this.qrDataUrl) return;
+    const win = window.open('', '_blank', 'width=420,height=520');
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>QR — ${this.qrSerial || this.deviceId}</title></head>
+      <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+        <img src="${this.qrDataUrl}" width="260" height="260" />
+        <p style="margin-top:0.75rem;font-size:0.85rem;">${this.qrSerial || this.deviceId}</p>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
     if (this.isOpen && this.deviceId) {
       this.loadHealth();
@@ -684,6 +797,9 @@ export class DeviceHealthModalComponent implements OnChanges {
       this.data = null;
       this.error = null;
       this.activeTab = 'summary';
+      this.qrOpen = false;
+      this.qrDataUrl = null;
+      this.qrError = null;
     }
   }
 

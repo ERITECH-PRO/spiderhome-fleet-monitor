@@ -3,11 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\Concerns\CustomerScoped;
 
 class Customer extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, CustomerScoped;
+
+    public function scopeForCustomer(Builder $query, int $customerId): Builder
+    {
+        return $query->where('id', $customerId);
+    }
 
     protected $fillable = [
         'name', 'server_address', 'phone', 'email', 'status', 'notes',

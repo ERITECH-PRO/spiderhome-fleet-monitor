@@ -98,6 +98,8 @@ export interface DeviceHealthData {
     status: 'online' | 'offline' | 'alert' | 'retired';
     health: 'sain' | 'surveillance' | 'critique';
     health_reason: string;
+    health_score?: number | null;
+    score_breakdown?: { points: number; reason: string }[];
     info: {
       model: string;
       mcu: string;

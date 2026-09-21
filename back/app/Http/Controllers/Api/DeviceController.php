@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\DeviceRequest;
+use App\Models\AuditLog;
 use App\Models\Device;
 use App\Services\EventNormalizerService;
 use App\Services\HealthRuleEngine;
@@ -123,6 +124,7 @@ class DeviceController extends Controller
     public function store(DeviceRequest $request)
     {
         $device = Device::create($request->validated());
+        AuditLog::record('device.created', $device);
         return response()->json($device->load(['site.customer', 'model']), 201);
     }
 
@@ -142,6 +144,7 @@ class DeviceController extends Controller
     public function update(DeviceRequest $request, Device $device)
     {
         $device->update($request->validated());
+        AuditLog::record('device.updated', $device, ['fields' => array_keys($request->validated())]);
         return response()->json($device->load(['site.customer', 'model']));
     }
 
@@ -193,6 +196,7 @@ class DeviceController extends Controller
      */
     public function destroy(Device $device)
     {
+        AuditLog::record('device.deleted', $device, ['serial_number' => $device->serial_number]);
         $device->delete();
         return response()->json(['message' => 'Module supprimé avec succès.'], 200);
     }
@@ -304,6 +308,8 @@ class DeviceController extends Controller
                 'status'        => $device->status,
                 'health'        => $evaluation['health'],
                 'health_reason' => $evaluation['health_reason'],
+                'health_score'    => $evaluation['health_score'] ?? null,
+                'score_breakdown' => $evaluation['score_breakdown'] ?? [],
                 'info' => [
                     'model'        => $device->model?->name ?? '—',
                     'mcu'          => $device->model?->mcu ?? '—',

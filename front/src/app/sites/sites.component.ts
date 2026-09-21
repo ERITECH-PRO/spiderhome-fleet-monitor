@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import { SiteService, Site } from '../services/site.service';
+import { AuthService } from '../services/auth.service';
 import { CustomerService, Customer } from '../services/customer.service';
 import { PageCacheService } from '../services/page-cache.service';
 import { ConfirmModalComponent } from '../shared/components/confirm-modal/confirm-modal.component';
@@ -94,10 +95,11 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
               <!-- actions -->
               <td class="text-right">
-                <div class="table-actions">
+                <div class="table-actions" *ngIf="auth.canManageFleet(); else readOnlyBadge">
                   <app-button variant="icon" size="sm" iconName="pencil" ariaLabel="Éditer le site" tooltip="Modifier" (btnClick)="openEdit(s)"></app-button>
                   <app-button variant="icon" size="sm" iconName="trash" ariaLabel="Supprimer le site" tooltip="Supprimer" [isDanger]="true" (btnClick)="promptDelete(s)"></app-button>
                 </div>
+                <ng-template #readOnlyBadge><span class="text-muted text-xs">—</span></ng-template>
               </td>
             </tr>
             <tr *ngIf="sites.length === 0 && !loading && !hasError">
@@ -223,7 +225,8 @@ export class SitesComponent implements OnInit {
     private customerService: CustomerService,
     private cacheService: PageCacheService,
     private route: ActivatedRoute,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    public auth: AuthService
   ) {}
 
   ngOnInit() {

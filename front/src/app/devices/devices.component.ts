@@ -2,6 +2,7 @@ import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DeviceService, Device } from '../services/device.service';
+import { AuthService } from '../services/auth.service';
 import { SiteService, Site } from '../services/site.service';
 import { DeviceModelService, DeviceModel } from '../services/device-model.service';
 import { CustomerService, Customer } from '../services/customer.service';
@@ -167,8 +168,10 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
                     <app-icon name="dashboard" [size]="15"></app-icon>
                   </a>
                   <app-button variant="icon" size="sm" iconName="heart-pulse" ariaLabel="Fiche Diagnostic Unifiée" tooltip="Diagnostic Santé" [isHealth]="true" (btnClick)="openHealth(d)"></app-button>
-                  <app-button variant="icon" size="sm" iconName="pencil" ariaLabel="Modifier l'emplacement" tooltip="Modifier l'emplacement" (btnClick)="openEdit(d)"></app-button>
-                  <app-button variant="icon" size="sm" iconName="trash" ariaLabel="Supprimer le module" tooltip="Supprimer" [isDanger]="true" (btnClick)="promptDelete(d)"></app-button>
+                  <ng-container *ngIf="auth.canManageFleet()">
+                    <app-button variant="icon" size="sm" iconName="pencil" ariaLabel="Modifier l'emplacement" tooltip="Modifier l'emplacement" (btnClick)="openEdit(d)"></app-button>
+                    <app-button variant="icon" size="sm" iconName="trash" ariaLabel="Supprimer le module" tooltip="Supprimer" [isDanger]="true" (btnClick)="promptDelete(d)"></app-button>
+                  </ng-container>
                 </div>
               </td>
             </tr>
@@ -529,7 +532,8 @@ export class DevicesComponent implements OnInit {
     private customerService: CustomerService,
     private cacheService: PageCacheService,
     private route: ActivatedRoute,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    public auth: AuthService
   ) {}
 
   ngOnInit() {

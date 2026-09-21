@@ -39,8 +39,14 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# ── Dépendances PHP (couche mise en cache) ───────────────────────────────────
-COPY composer.json composer.lock ./
+# ── Code applicatif ──────────────────────────────────────────────────────────
+# Copié AVANT composer install (et non après) : la dépendance QR code
+# ci-dessous est ajoutée par un `composer require` qui modifie composer.json
+# et composer.lock DANS l'image. Copier le code après ce require écraserait
+# ces deux fichiers avec les versions du dépôt (sans la dépendance) et
+# désynchroniserait le lock d'une future réinstallation.
+COPY . .
+
 RUN composer install \
         --no-dev \
         --no-scripts \
@@ -48,8 +54,14 @@ RUN composer install \
         --prefer-dist \
         --no-interaction
 
-# ── Code applicatif ──────────────────────────────────────────────────────────
-COPY . .
+# Génération de QR code (fiche module, cahier des charges §7/§8) — ajoutée
+# après le premier verrouillage de composer.lock : `require` résout et
+# verrouille ce seul paquet via le réseau du serveur de build, sans exiger
+# que composer.lock soit déjà à jour pour lui.
+RUN composer require chillerlan/php-qrcode:^5.0 \
+        --no-dev \
+        --no-scripts \
+        --no-interaction
 
 # bootstrap/cache doit exister AVANT dump-autoload : le hook post-autoload-dump
 # de Laravel (package:discover) écrit dedans dès la fin de la commande.
@@ -58,10 +70,9 @@ RUN mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstra
     && chmod -R 775 storage bootstrap/cache \
     && composer dump-autoload --optimize --no-dev
 
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN chmod +x docker/entrypoint.sh
 
 EXPOSE 9000
 
-ENTRYPOINT ["entrypoint.sh"]
+ENTRYPOINT ["docker/entrypoint.sh"]
 CMD ["php-fpm"]

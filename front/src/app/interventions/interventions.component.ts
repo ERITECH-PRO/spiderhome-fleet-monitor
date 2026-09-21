@@ -13,6 +13,7 @@ import {
 import { CustomerService, Customer } from '../services/customer.service';
 import { SiteService, Site } from '../services/site.service';
 import { DeviceService, Device } from '../services/device.service';
+import { AuthService } from '../services/auth.service';
 import { ModalComponent } from '../shared/components/modal/modal.component';
 import { ConfirmModalComponent } from '../shared/components/confirm-modal/confirm-modal.component';
 import { ButtonComponent } from '../shared/components/button/button.component';
@@ -564,7 +565,7 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
         </div>
 
         <!-- Quick Status Progression Toolbar -->
-        <div class="detail-card status-change-section">
+        <div class="detail-card status-change-section" *ngIf="auth.canManageAlerts()">
           <h4 class="detail-card-title">⚡ Faire évoluer le statut</h4>
           <div class="status-btn-row">
             <button
@@ -1544,7 +1545,8 @@ export class InterventionsComponent implements OnInit {
     private customerService: CustomerService,
     private siteService: SiteService,
     private deviceService: DeviceService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    public auth: AuthService
   ) {}
 
   get modalTitle(): string {

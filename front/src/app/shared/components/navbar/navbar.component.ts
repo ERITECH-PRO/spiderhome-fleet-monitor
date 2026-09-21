@@ -59,6 +59,20 @@ import { SpiderHomeLogoComponent } from '../spiderhome-logo/spiderhome-logo.comp
             <app-icon name="wrench" [size]="17" class="nav-svg"></app-icon>
             <span>Interventions</span>
           </a>
+          <a class="nav-link" routerLink="/audit"
+             routerLinkActive="active"
+             *ngIf="auth.canViewAudit()"
+             title="Journal d'audit">
+            <app-icon name="warning" [size]="17" class="nav-svg"></app-icon>
+            <span>Audit</span>
+          </a>
+          <a class="nav-link" routerLink="/users"
+             routerLinkActive="active"
+             *ngIf="auth.isAdmin()"
+             title="Comptes & rôles">
+            <app-icon name="customers" [size]="17" class="nav-svg"></app-icon>
+            <span>Comptes</span>
+          </a>
         </div>
 
         <!-- Right Side: Theme Toggle, User Status & Logout -->

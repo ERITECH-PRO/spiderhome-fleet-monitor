@@ -4,10 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
+use App\Models\Concerns\CustomerScoped;
 
 class Device extends Model
 {
-    use HasFactory;
+    use HasFactory, CustomerScoped;
+
+    public function scopeForCustomer(Builder $query, int $customerId): Builder
+    {
+        return $query->whereHas('site', fn (Builder $q) => $q->where('customer_id', $customerId));
+    }
 
     protected $fillable = [
         'site_id', 'model_id', 'guid', 'serial_number', 'legacy_device_key',

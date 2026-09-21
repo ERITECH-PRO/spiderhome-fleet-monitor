@@ -3,10 +3,19 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\Concerns\CustomerScoped;
 
 class Alert extends Model
 {
+    use CustomerScoped;
+
+    public function scopeForCustomer(Builder $query, int $customerId): Builder
+    {
+        return $query->whereHas('device.site', fn (Builder $q) => $q->where('customer_id', $customerId));
+    }
+
     protected $fillable = [
         'device_id', 'type', 'severity', 'message', 'status',
         'acknowledged_by', 'acknowledged_at', 'resolved_at',

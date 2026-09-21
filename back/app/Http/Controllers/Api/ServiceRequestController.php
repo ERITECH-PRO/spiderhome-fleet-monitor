@@ -53,7 +53,23 @@ class ServiceRequestController extends Controller
     // ────────────────────────────────────────────────────────────────────────────
     public function store(StoreServiceRequestRequest $request): JsonResponse
     {
-        $sr = ServiceRequest::create($request->validated());
+        $data = $request->validated();
+
+        // Un compte client ne peut créer une demande que pour lui-même,
+        // quoi que le payload contienne — l'isolation ne doit jamais
+        // reposer sur la bonne foi du client.
+        $user = $request->user();
+        if ($user->role === \App\Models\User::ROLE_CLIENT) {
+            if (! $user->customer_id) {
+                return response()->json([
+                    'error'   => 'NO_CUSTOMER_LINKED',
+                    'message' => 'Ce compte client n\'est rattaché à aucun client.',
+                ], 422);
+            }
+            $data['customer_id'] = $user->customer_id;
+        }
+
+        $sr = ServiceRequest::create($data);
 
         // Historique : création initiale
         ServiceRequestHistory::create([

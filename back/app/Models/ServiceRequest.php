@@ -3,11 +3,37 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Concerns\CustomerScoped;
 
 class ServiceRequest extends Model
 {
+    use CustomerScoped;
+
+    public function scopeForCustomer(Builder $query, int $customerId): Builder
+    {
+        return $query->where('customer_id', $customerId);
+    }
+
+    protected static function booted(): void
+    {
+        // Rôle technicien : uniquement les demandes qui lui sont assignées
+        // (cahier des charges §4 : « Interventions assignées uniquement »).
+        static::addGlobalScope('technician-assignment', function (Builder $builder) {
+            if (! auth()->check()) {
+                return;
+            }
+
+            $user = auth()->user();
+
+            if ($user->role === User::ROLE_TECHNICIAN) {
+                $builder->where('assigned_to', $user->id);
+            }
+        });
+    }
+
     // ── Statuts valides ────────────────────────────────────────────────────────
     const STATUS_OPEN        = 'open';
     const STATUS_IN_PROGRESS = 'in_progress';
