@@ -59,7 +59,7 @@ RUN composer install \
 # verrouille ce seul paquet via le réseau du serveur de build, sans exiger
 # que composer.lock soit déjà à jour pour lui.
 RUN composer require chillerlan/php-qrcode:^5.0 \
-        --no-dev \
+        --update-no-dev \
         --no-scripts \
         --no-interaction
 
