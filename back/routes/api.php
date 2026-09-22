@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HeapLogController;
 use App\Http\Controllers\Api\LegacyDashboardController;
 use App\Http\Controllers\Api\ModuleInstallController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\ServiceRequestController;
 use App\Http\Controllers\Api\SiteController;
@@ -68,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function () use ($staff, $manage) {
     // site ou un module directement, ils viennent du provisionnement auto.
     Route::get('devices/{id}/health', [DeviceController::class, 'health']);
     Route::get('devices/{id}/qr', [DeviceController::class, 'qr']);
+    Route::get('customers/{customer}/export', [CustomerController::class, 'export']);
     Route::apiResource('customers', CustomerController::class)
         ->except(['store', 'update', 'destroy']);
     Route::apiResource('customers', CustomerController::class)
@@ -97,6 +99,13 @@ Route::middleware('auth:sanctum')->group(function () use ($staff, $manage) {
     Route::patch('service-requests/{serviceRequest}/status', [ServiceRequestController::class, 'updateStatus'])
         ->middleware('role:' . implode(',', array_merge($manage, [User::ROLE_TECHNICIAN])));
     Route::get('service-requests/{serviceRequest}/histories', [ServiceRequestController::class, 'histories']);
+    Route::post('service-requests/{serviceRequest}/comments', [ServiceRequestController::class, 'addComment']);
+    Route::get('service-requests/{serviceRequest}/attachment', [ServiceRequestController::class, 'attachment']);
+
+    // ── Notifications in-app ─────────────────────────────────────────────────
+    Route::get('notifications', [NotificationController::class, 'index']);
+    Route::patch('notifications/{notification}/read', [NotificationController::class, 'markRead']);
+    Route::patch('notifications/read-all', [NotificationController::class, 'markAllRead']);
 
     // ── Alertes ─────────────────────────────────────────────────────────────
     // Un client peut consulter les alertes de son propre parc, jamais les
@@ -108,6 +117,8 @@ Route::middleware('auth:sanctum')->group(function () use ($staff, $manage) {
         Route::patch('alerts/{alert}/acknowledge', [AlertController::class, 'acknowledge']);
         Route::patch('alerts/{alert}/resolve',     [AlertController::class, 'resolve']);
         Route::patch('alerts/{alert}/reopen',      [AlertController::class, 'reopen']);
+        Route::patch('alerts/{alert}/assign',      [AlertController::class, 'assign']);
+        Route::patch('alerts/{alert}/diagnostic',  [AlertController::class, 'diagnostic']);
     });
 
     // ── Tableau de bord flotte ──────────────────────────────────────────────

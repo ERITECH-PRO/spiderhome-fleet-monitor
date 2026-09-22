@@ -11,7 +11,13 @@ export interface DeviceAlert {
   type: string;
   type_raw?: string;
   severity: AlertSeverity;
+  priority?: 'low' | 'normal' | 'high' | 'critical';
   message: string;
+  diagnostic?: string | null;
+  occurrences?: number;
+  first_occurred_at?: string | null;
+  last_occurred_at?: string | null;
+  owner?: { id: number; name: string } | null;
   status: AlertStatus;
   acknowledged_at?: string | null;
   resolved_at?: string | null;
@@ -29,7 +35,10 @@ export interface DeviceAlert {
 export interface AlertFilter {
   status?: AlertStatus | '';
   severity?: AlertSeverity | '';
+  priority?: string | '';
   device_id?: number | '';
+  owner_id?: number | '';
+  unassigned?: boolean;
   hours?: number;
   search?: string;
   sort?: string;
@@ -78,6 +87,14 @@ export class AlertService {
 
   reopen(id: number): Observable<DeviceAlert> {
     return this.http.patch<DeviceAlert>(`${this.base}/${id}/reopen`, {});
+  }
+
+  assign(id: number, ownerId: number | null): Observable<DeviceAlert> {
+    return this.http.patch<DeviceAlert>(`${this.base}/${id}/assign`, { owner_id: ownerId });
+  }
+
+  setDiagnostic(id: number, diagnostic: string): Observable<DeviceAlert> {
+    return this.http.patch<DeviceAlert>(`${this.base}/${id}/diagnostic`, { diagnostic });
   }
 
   delete(id: number): Observable<{ message: string }> {

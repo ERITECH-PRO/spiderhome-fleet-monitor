@@ -191,6 +191,9 @@ export type DiagTab = 'summary' | 'heap' | 'events' | 'all';
                 <div class="kv"><span>Adresse</span><span class="v muted">{{ data.module.installation.site_address || '—' }}</span></div>
                 <div class="kv"><span>Date installation</span><span class="v mono">{{ data.module.installation.installed_at ? (data.module.installation.installed_at | date:'dd/MM/yyyy HH:mm') : '—' }}</span></div>
                 <div class="kv"><span>Serveur SUPLA</span><span class="v mono muted">{{ data.module.installation.supla_server || '—' }}</span></div>
+                <div class="kv"><span>Pose physique</span><span class="v mono">{{ data.module.installation.physical_install_date ? (data.module.installation.physical_install_date | date:'dd/MM/yyyy') : '—' }}</span></div>
+                <div class="kv"><span>Installateur</span><span class="v">{{ data.module.installation.installer_name || '—' }}</span></div>
+                <div class="kv"><span>Garantie jusqu'au</span><span class="v mono">{{ data.module.installation.warranty_until ? (data.module.installation.warranty_until | date:'dd/MM/yyyy') : '—' }}</span></div>
               </div>
             </div>
 

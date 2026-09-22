@@ -22,10 +22,13 @@ class StoreServiceRequestRequest extends FormRequest
             'assigned_to' => ['nullable', 'integer', 'exists:users,id'],
             'title'       => ['required', 'string', 'max:255'],
             'reason'      => ['nullable', 'string', 'max:255'],
+            'category'    => ['nullable', Rule::in(array_keys(ServiceRequest::CATEGORIES))],
             'description' => ['required', 'string', 'max:5000'],
             'priority'    => ['nullable', Rule::in(ServiceRequest::PRIORITIES)],
             'status'      => ['nullable', Rule::in(ServiceRequest::STATUSES)],
             'desired_at'  => ['nullable', 'date', 'after_or_equal:today'],
+            // Photo ou vidéo facultative — cahier §7.4.
+            'attachment'  => ['nullable', 'file', 'max:15360', 'mimes:jpg,jpeg,png,webp,mp4,mov,webm'],
         ];
     }
 

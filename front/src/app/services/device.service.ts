@@ -22,6 +22,10 @@ export interface Device {
   ip_address: string | null;
   supla_server: string | null;
   last_seen_at: string | null;
+  installed_at?: string | null;
+  installer_name?: string | null;
+  initial_firmware?: string | null;
+  warranty_until?: string | null;
   site?: { id: number; customer_id?: number; name: string; address?: string | null; customer?: { id: number; name: string } };
   model?: { id: number; name: string; mcu: string | null; ota_capable: boolean };
   created_at: string;
@@ -120,6 +124,10 @@ export interface DeviceHealthData {
       installed_at: string;
       supla_server: string;
       location_label: string;
+      physical_install_date?: string | null;
+      installer_name?: string | null;
+      initial_firmware?: string | null;
+      warranty_until?: string | null;
     };
     supla_status?: {
       connected: boolean | null;

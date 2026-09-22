@@ -256,6 +256,12 @@ class DeviceController extends Controller
             'installed_at'   => $install?->timestamp?->toIso8601String() ?? $device->created_at?->toIso8601String(),
             'supla_server'   => $device->supla_server ?? $install?->supla_server ?? '—',
             'location_label' => $device->label ?? $device->site?->name ?? 'Emplacement standard',
+            // Cahier §7.1 : pose physique déclarée par l'opérateur — distincte
+            // de 'installed_at' ci-dessus (premier contact réseau, automatique).
+            'physical_install_date' => $device->installed_at?->format('Y-m-d'),
+            'installer_name'        => $device->installer_name,
+            'initial_firmware'      => $device->initial_firmware,
+            'warranty_until'        => $device->warranty_until?->format('Y-m-d'),
         ];
 
         // 2. Données de télémétrie Heap (recherche dans heap_logs legacy)

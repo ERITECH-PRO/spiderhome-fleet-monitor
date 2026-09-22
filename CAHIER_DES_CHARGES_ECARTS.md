@@ -11,8 +11,6 @@ Ce document liste ce qui a été ajouté pour combler les écarts **réalistes
 dans l'architecture actuelle**, et ce qui reste **structurellement absent**
 (nécessite un chantier séparé).
 
----
-
 ## Ajouté dans cette session
 
 ### 1. Contrôle d'accès par rôle et isolation client — REC-02, §4
@@ -83,6 +81,50 @@ scannable.
 
 ---
 
+### 7. Regroupement d'incidents — §7.3
+Avant : seuls 2 types d'événements sur les 12 du catalogue (`heap_low`,
+`offline`) ouvraient une alerte groupée. Les 10 autres — dont
+`MOTOR_SAFETY_EVENT`, explicitement « priorité maximale » au cahier — ne
+déclenchaient rien de visible, seulement une ligne dans `device_events`.
+
+Ajouté : `FleetSyncService::upsertIncident()` généralise le regroupement à
+tous les types notables (warning/critical). Chaque incident conserve
+désormais première/dernière occurrence, compteur, priorité, diagnostic et
+propriétaire (colonnes ajoutées sur `alerts`), comme demandé au cahier.
+Nouveaux endpoints `PATCH /alerts/{id}/assign` et `/diagnostic`. Nouvel
+écran Angular **Incidents** (`/incidents`, rôles internes) : file
+priorisée, filtres priorité/gravité/non-assigné, assignation, diagnostic.
+
+### 8. Fiche parc client et export — §7.1
+Champs ajoutés sur `devices` : `installed_at` (pose physique, distinct du
+premier contact réseau automatique), `installer_name`, `initial_firmware`,
+`warranty_until` — visibles et modifiables depuis la fiche module et
+exposés dans la fiche diagnostic.
+
+Export CSV `GET /customers/{id}/export` : « fiche parc client sans exposer
+les secrets techniques » — MAC, clé legacy et serveur SUPLA volontairement
+exclus. Bouton d'export sur l'écran Clients.
+
+### 9. Demandes d'intervention (SAV) — §7.4
+Champs manquants ajoutés : `category` (catégorie de problème, 7 valeurs),
+pièce jointe photo/vidéo facultative (15 Mo max), notes internes
+distinctes des échanges visibles par le client (`is_internal`), sélecteur
+de technicien dans l'écran (le champ `assigned_to` existait déjà en base
+mais rien ne permettait de le renseigner).
+
+Notifications in-app : table `notifications` + polling 60s côté Angular
+(cloche dans la navbar). Le client et le technicien assigné sont notifiés
+à chaque changement de statut ou d'assignation ; l'équipe support/admin
+est notifiée à la création d'une demande. Pas d'e-mail ni de push — seule
+l'infra OTP (Brevo) existe, et elle n'est câblée qu'au mot de passe oublié.
+
+Bug de conception trouvé en cours de route : la relation Eloquent
+`assignedTo()` écrasait la colonne brute `assigned_to` dans le JSON
+(collision de clé), ce qui aurait rendu le sélecteur technicien inutilisable
+dès sa mise en service. Corrigé avant de construire l'écran qui en dépend.
+
+---
+
 ## Structurellement absent — nécessite un chantier séparé
 
 Rien ci-dessous n'a été ajouté : ce sont des sous-systèmes entiers, pas des
@@ -95,10 +137,9 @@ correctifs.
 | OTA firmware (catalogue, campagnes, consentement, rollback réel) | Sous-système entier ; le cahier précise lui-même qu'ESP-07 ne fait pas d'OTA |
 | Application mobile technicien (scan QR, intervention hors-ligne) | Développement Flutter séparé |
 | MFA administrateurs | Authentification actuelle : Sanctum + mot de passe seul |
-| Renommage des statuts SAV (« reçue », « rendez-vous proposé »…) | Cosmétique, pas fait pour ne pas complexifier un changement déjà large ; les statuts actuels (`open`/`in_progress`/`resolved`/`closed`) restent fonctionnels |
-| Export fiche parc client (PDF/CSV) sans secrets | Pas encore fait — ajout simple si prioritaire |
-| Interface d'administration des rôles/audit côté Angular | Le backend existe (§1-3 ci-dessus) ; pas d'écran Angular dédié encore construit |
+| Notifications par e-mail / push (SAV) | Seules les notifications in-app existent ; infra Brevo réservée à l'OTP mot de passe oublié |
+| Renommage des statuts SAV (« reçue », « rendez-vous proposé »…) | Cosmétique ; les statuts actuels (`open`/`in_progress`/`resolved`/`closed`) restent fonctionnels |
+| Disponibilités du client sous forme de plages horaires | `desired_at` (une date unique) existe déjà ; un vrai calendrier de disponibilités n'a pas été ajouté |
 
-Si vous voulez avancer sur l'un de ces points, dites lequel en priorité —
-plusieurs (export CSV, écran d'audit Angular) sont largement plus rapides
-que d'autres (MFA, OTA).
+Si vous voulez avancer sur l'un de ces points, dites lequel en priorité.
+

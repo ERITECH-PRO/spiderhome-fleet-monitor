@@ -14,6 +14,11 @@ class ServiceRequestHistory extends Model
         'new_value',
         'changed_by',
         'comment',
+        'is_internal',
+    ];
+
+    protected $casts = [
+        'is_internal' => 'boolean',
     ];
 
     public function serviceRequest(): BelongsTo

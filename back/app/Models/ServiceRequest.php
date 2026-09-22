@@ -62,6 +62,17 @@ class ServiceRequest extends Model
         self::PRIORITY_LOW,
     ];
 
+    // ── Catégories de problème — cahier §7.4 ─────────────────────────────────
+    const CATEGORIES = [
+        'connectivity'   => 'Connectivité (Wi-Fi, réseau)',
+        'power'          => 'Alimentation / coupures',
+        'hardware'       => 'Panne matérielle',
+        'motor'          => 'Sécurité moteur / volet',
+        'performance'    => 'Performance / mémoire',
+        'installation'   => 'Question d\'installation',
+        'other'          => 'Autre',
+    ];
+
     protected $fillable = [
         'reference',
         'customer_id',
@@ -70,7 +81,11 @@ class ServiceRequest extends Model
         'assigned_to',
         'title',
         'reason',
+        'category',
         'description',
+        'attachment_path',
+        'attachment_name',
+        'attachment_mime',
         'priority',
         'status',
         'desired_at',
@@ -115,6 +130,18 @@ class ServiceRequest extends Model
     }
 
     public function assignedTo(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /**
+     * Alias exposé aux API sous la clé JSON `assigned_to_user` plutôt que
+     * `assignedTo()` : le nom de relation snake_case de cette dernière
+     * ('assigned_to') entre en collision avec la colonne brute du même
+     * nom — Eloquent écraserait alors l'identifiant numérique par l'objet
+     * utilisateur chargé. Utilisé dans RELATIONS à la place de assignedTo.
+     */
+    public function assignedToUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }

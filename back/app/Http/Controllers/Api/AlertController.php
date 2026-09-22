@@ -12,7 +12,7 @@ use Illuminate\Validation\Rule;
 
 class AlertController extends Controller
 {
-    private const RELATIONS = ['device:id,serial_number,mac,label,firmware,status'];
+    private const RELATIONS = ['device:id,serial_number,mac,label,firmware,status', 'owner:id,name'];
 
     /**
      * GET /api/alerts
@@ -34,6 +34,15 @@ class AlertController extends Controller
         }
         if ($request->filled('device_id')) {
             $query->where('device_id', $request->device_id);
+        }
+        if ($request->filled('priority')) {
+            $query->where('priority', $request->priority);
+        }
+        if ($request->filled('owner_id')) {
+            $query->where('owner_id', $request->owner_id);
+        }
+        if ($request->boolean('unassigned')) {
+            $query->whereNull('owner_id');
         }
         if ($request->filled('search')) {
             $term = $request->search;
@@ -149,6 +158,39 @@ class AlertController extends Controller
     }
 
     /**
+     * PATCH /api/alerts/{id}/assign — Assigner un propriétaire à l'incident
+     * (cahier §12 : « Incidents : file priorisée, assignation et diagnostic »).
+     */
+    public function assign(Request $request, Alert $alert): JsonResponse
+    {
+        $data = $request->validate([
+            'owner_id' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $alert->update(['owner_id' => $data['owner_id'] ?? null]);
+
+        AuditLog::record('alert.assigned', $alert, ['owner_id' => $data['owner_id'] ?? null]);
+
+        return response()->json($this->formatAlert($alert->load(self::RELATIONS)));
+    }
+
+    /**
+     * PATCH /api/alerts/{id}/diagnostic — Renseigner le diagnostic de l'incident.
+     */
+    public function diagnostic(Request $request, Alert $alert): JsonResponse
+    {
+        $data = $request->validate([
+            'diagnostic' => ['nullable', 'string', 'max:4000'],
+        ]);
+
+        $alert->update(['diagnostic' => $data['diagnostic'] ?? null]);
+
+        AuditLog::record('alert.diagnostic_updated', $alert);
+
+        return response()->json($this->formatAlert($alert->load(self::RELATIONS)));
+    }
+
+    /**
      * DELETE /api/alerts/{id}
      */
     public function destroy(Alert $alert): JsonResponse
@@ -189,6 +231,12 @@ class AlertController extends Controller
             'severity'         => EventNormalizerService::normalizeSeverity($alert->severity, $alert->type),
             'message'          => $alert->message,
             'status'           => $alert->status,
+            'priority'         => $alert->priority,
+            'diagnostic'       => $alert->diagnostic,
+            'occurrences'      => $alert->occurrences,
+            'first_occurred_at'=> $alert->first_occurred_at?->toIso8601String(),
+            'last_occurred_at' => $alert->last_occurred_at?->toIso8601String(),
+            'owner'            => $alert->owner ? ['id' => $alert->owner->id, 'name' => $alert->owner->name] : null,
             'acknowledged_at'  => $alert->acknowledged_at?->toIso8601String(),
             'resolved_at'      => $alert->resolved_at?->toIso8601String(),
             'created_at'       => $alert->created_at?->toIso8601String(),

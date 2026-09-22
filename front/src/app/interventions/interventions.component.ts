@@ -8,12 +8,14 @@ import {
   SRStatus,
   SRPriority,
   SRFilter,
-  StoreServiceRequestPayload
+  StoreServiceRequestPayload,
+  SR_CATEGORIES
 } from '../services/service-request.service';
 import { CustomerService, Customer } from '../services/customer.service';
 import { SiteService, Site } from '../services/site.service';
 import { DeviceService, Device } from '../services/device.service';
 import { AuthService } from '../services/auth.service';
+import { UserService, AppUser } from '../services/user.service';
 import { ModalComponent } from '../shared/components/modal/modal.component';
 import { ConfirmModalComponent } from '../shared/components/confirm-modal/confirm-modal.component';
 import { ButtonComponent } from '../shared/components/button/button.component';
@@ -419,6 +421,15 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
           />
         </div>
 
+        <!-- Catégorie de problème — cahier §7.4 -->
+        <div class="popup-field">
+          <label class="popup-label">Catégorie de problème</label>
+          <select class="popup-select" [(ngModel)]="formData.category" name="category">
+            <option [ngValue]="undefined">— Non catégorisé —</option>
+            <option *ngFor="let c of categories" [ngValue]="c.value">{{ c.label }}</option>
+          </select>
+        </div>
+
         <!-- Priorité -->
         <div class="popup-field">
           <label class="popup-label">Niveau de priorité</label>
@@ -466,6 +477,13 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
             name="description"
             required
           ></textarea>
+        </div>
+
+        <!-- Photo ou vidéo facultative — cahier §7.4 -->
+        <div class="popup-field form-col-full">
+          <label class="popup-label">Photo ou vidéo (facultatif)</label>
+          <input type="file" class="popup-input" accept="image/*,video/*" (change)="onAttachmentSelected($event)">
+          <span class="form-hint" *ngIf="selectedAttachment">{{ selectedAttachment.name }} ({{ (selectedAttachment.size / 1024 / 1024).toFixed(1) }} Mo)</span>
         </div>
       </form>
 
@@ -561,7 +579,24 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
         <!-- Description Box -->
         <div class="detail-card">
           <h4 class="detail-card-title">📝 Description du problème</h4>
+          <p class="text-xs text-muted" *ngIf="selectedItem.category" style="margin: 0 0 0.5rem;">
+            Catégorie : <strong>{{ categoryLabel(selectedItem.category) }}</strong>
+          </p>
           <div class="detail-desc-content">{{ selectedItem.description }}</div>
+          <div class="attachment-row" *ngIf="selectedItem.attachment_name">
+            <app-button variant="secondary" size="sm" iconName="download" (btnClick)="downloadAttachment(selectedItem)">
+              {{ selectedItem.attachment_name }}
+            </app-button>
+          </div>
+        </div>
+
+        <!-- Assignation technicien — cahier §4 / §7.4 -->
+        <div class="detail-card" *ngIf="auth.canManageFleet()">
+          <h4 class="detail-card-title">🔧 Technicien assigné</h4>
+          <select class="popup-select" [ngModel]="selectedItem.assigned_to" (ngModelChange)="assignTechnician($event)">
+            <option [ngValue]="null">— Non assigné —</option>
+            <option *ngFor="let t of technicians" [ngValue]="t.id">{{ t.name }}</option>
+          </select>
         </div>
 
         <!-- Quick Status Progression Toolbar -->
@@ -599,11 +634,12 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
               <div class="timeline-body">
                 <div class="timeline-top">
                   <span class="timeline-title">
-                    Changement de {{ h.field === 'status' ? 'statut' : h.field }}
+                    {{ h.field === 'status' ? 'Changement de statut' : h.field === 'note' ? 'Note' : 'Changement de ' + h.field }}
                   </span>
+                  <span class="internal-badge" *ngIf="h.is_internal">🔒 Interne</span>
                   <span class="timeline-time mono text-muted text-xs">{{ h.created_at | date:'dd/MM/yyyy HH:mm' }}</span>
                 </div>
-                <div class="timeline-diff">
+                <div class="timeline-diff" *ngIf="h.field !== 'note'">
                   <span class="val-old" *ngIf="h.old_value">{{ h.old_value }}</span>
                   <span class="val-arrow" *ngIf="h.old_value">➔</span>
                   <span class="val-new">{{ h.new_value }}</span>
@@ -615,6 +651,20 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
                   💬 <em>« {{ h.comment }} »</em>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Ajout d'une note — cahier §7.4 -->
+          <div class="comment-box">
+            <textarea class="popup-input" rows="2" placeholder="Ajouter une note…" [(ngModel)]="newComment" name="newComment"></textarea>
+            <div class="comment-box-actions">
+              <label class="filter-checkbox" *ngIf="auth.isStaff()">
+                <input type="checkbox" [(ngModel)]="newCommentInternal" name="newCommentInternal">
+                Note interne (invisible au client)
+              </label>
+              <app-button variant="primary" size="sm" [isLoading]="postingComment" [disabled]="!newComment.trim()" (btnClick)="postComment()">
+                Envoyer
+              </app-button>
             </div>
           </div>
         </div>
@@ -1379,6 +1429,16 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
     .timeline-author { font-size: 0.74rem; color: var(--text-muted); }
     .timeline-quote  { font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.15rem; background: var(--input-bg); padding: 0.3rem 0.6rem; border-radius: 4px; }
 
+    .internal-badge {
+      font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      padding: 1px 7px; border-radius: 999px; background: rgba(234,179,8,.15); color: #facc15;
+      border: 1px solid rgba(234,179,8,.35);
+    }
+    .attachment-row { margin-top: 0.75rem; }
+    .comment-box { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+    .comment-box-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem; gap: 0.75rem; }
+    .filter-checkbox { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--text-secondary); }
+
     /* Status change preview in modal */
     .status-change-preview-box {
       background: var(--card-hover);
@@ -1510,6 +1570,12 @@ export class InterventionsComponent implements OnInit {
   formSaving = false;
   formError = '';
   editingItem: ServiceRequest | null = null;
+  categories = SR_CATEGORIES;
+  selectedAttachment: File | null = null;
+  technicians: AppUser[] = [];
+  newComment = '';
+  newCommentInternal = false;
+  postingComment = false;
 
   formData: StoreServiceRequestPayload = {
     customer_id: null as any,
@@ -1545,6 +1611,7 @@ export class InterventionsComponent implements OnInit {
     private customerService: CustomerService,
     private siteService: SiteService,
     private deviceService: DeviceService,
+    private userService: UserService,
     private cdr: ChangeDetectorRef,
     public auth: AuthService
   ) {}
@@ -1566,6 +1633,13 @@ export class InterventionsComponent implements OnInit {
   ngOnInit(): void {
     this.loadPreloadData();
     this.loadRequests();
+
+    if (this.auth.canManageFleet()) {
+      this.userService.getAll().subscribe({
+        next: (res) => { this.technicians = (res.users || []).filter(u => u.role === 'technician'); this.cdr.markForCheck(); },
+        error: () => {}
+      });
+    }
 
     // Debounce search input
     this.searchSubject.pipe(
@@ -1756,6 +1830,7 @@ export class InterventionsComponent implements OnInit {
       status: 'open',
       desired_at: ''
     };
+    this.selectedAttachment = null;
     this.availableSites = [];
     this.availableDevices = [];
     this.showFormModal = true;
@@ -1781,6 +1856,7 @@ export class InterventionsComponent implements OnInit {
       status: item.status,
       desired_at: formattedDesiredAt
     };
+    this.selectedAttachment = null;
 
     // Pre-populate cascading lists
     this.availableSites = this.allSites.filter(s => s.customer_id === item.customer_id);
@@ -1790,6 +1866,11 @@ export class InterventionsComponent implements OnInit {
 
   closeFormModal(): void {
     this.showFormModal = false;
+  }
+
+  onAttachmentSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.selectedAttachment = input.files && input.files.length > 0 ? input.files[0] : null;
   }
 
   saveRequest(): void {
@@ -1823,7 +1904,7 @@ export class InterventionsComponent implements OnInit {
         }
       });
     } else {
-      this.srService.create(this.formData).subscribe({
+      this.srService.create({ ...this.formData, attachment: this.selectedAttachment }).subscribe({
         next: (created) => {
           this.formSaving = false;
           this.showFormModal = false;
@@ -1844,6 +1925,8 @@ export class InterventionsComponent implements OnInit {
     this.showDetailModal = true;
     this.loadingHistory = true;
     this.itemHistories = [];
+    this.newComment = '';
+    this.newCommentInternal = false;
 
     // Charger l'historique complet via l'API
     this.srService.getHistories(item.id).subscribe({
@@ -1854,6 +1937,54 @@ export class InterventionsComponent implements OnInit {
       },
       error: () => {
         this.loadingHistory = false;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  categoryLabel(value: string): string {
+    return this.categories.find(c => c.value === value)?.label || value;
+  }
+
+  downloadAttachment(item: ServiceRequest): void {
+    this.srService.downloadAttachment(item.id).subscribe({
+      next: (blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = item.attachment_name || 'piece-jointe';
+        a.click();
+        window.URL.revokeObjectURL(url);
+      },
+      error: () => this.showAlert('Impossible de télécharger la pièce jointe.', 'error')
+    });
+  }
+
+  assignTechnician(userId: number | null): void {
+    if (!this.selectedItem) return;
+    this.srService.update(this.selectedItem.id, { assigned_to: userId }).subscribe({
+      next: (updated) => {
+        if (this.selectedItem) this.selectedItem.assigned_to = updated.assigned_to;
+        this.showAlert('Technicien assigné.', 'success');
+      },
+      error: () => this.showAlert('Impossible d\'assigner ce technicien.', 'error')
+    });
+  }
+
+  postComment(): void {
+    if (!this.selectedItem || !this.newComment.trim()) return;
+    this.postingComment = true;
+    this.srService.addComment(this.selectedItem.id, this.newComment.trim(), this.newCommentInternal).subscribe({
+      next: (history) => {
+        this.itemHistories = [history, ...this.itemHistories];
+        this.newComment = '';
+        this.newCommentInternal = false;
+        this.postingComment = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.postingComment = false;
+        this.showAlert('Impossible d\'envoyer la note.', 'error');
         this.cdr.markForCheck();
       }
     });

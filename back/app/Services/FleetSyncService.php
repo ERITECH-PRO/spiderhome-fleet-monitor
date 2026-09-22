@@ -483,12 +483,89 @@ class FleetSyncService
                 'occurred_at'   => $row->timestamp,
             ]);
             $stats['events_imported']++;
+
+            // Regroupement d'incidents — cahier §7.3 : toute ligne notable
+            // (warning/critical) ouvre ou fait vivre un incident groupé par
+            // (module, type), pas seulement heap_low/offline. Avant ce
+            // correctif, un WATCHDOG_RESET, un BROWNOUT ou même un
+            // MOTOR_SAFETY_EVENT (priorité maximale au cahier) ne
+            // déclenchait aucune alerte.
+            if ($severity !== 'info' && ! in_array($type, ['heap_low', 'offline'], true)) {
+                $this->upsertIncident(
+                    $device,
+                    $type,
+                    $severity,
+                    EventNormalizerService::normalizeMessage($type, $row->note, $row->heap_kb ?? $row->heap ?? null),
+                    $stats
+                );
+            }
         }
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 4. Alertes
+    // 4. Alertes / Incidents
     // ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Crée ou fait vivre un incident groupé pour (module, type) — cahier §7.3 :
+     * « Les répétitions similaires sont regroupées dans un seul incident
+     *   actif. Chaque incident conserve première/dernière occurrence,
+     *   compteur, priorité, diagnostic, propriétaire et statut. »
+     *
+     * Le diagnostic et le propriétaire restent la main de l'opérateur
+     * (jamais écrasés ici, voir AlertController@assign / @diagnostic).
+     */
+    private function upsertIncident(Device $device, string $type, string $severity, string $message, array &$stats): void
+    {
+        $open = Alert::where('device_id', $device->id)
+            ->where('type', $type)
+            ->whereIn('status', ['open', 'acknowledged'])
+            ->first();
+
+        $priority = $this->priorityFor($type, $severity);
+
+        if ($open) {
+            $open->update([
+                'severity'         => $severity,
+                'priority'         => $priority,
+                'message'          => $message,
+                'last_occurred_at' => now(),
+                'occurrences'      => $open->occurrences + 1,
+            ]);
+
+            return;
+        }
+
+        Alert::create([
+            'device_id'         => $device->id,
+            'type'              => $type,
+            'severity'          => $severity,
+            'priority'          => $priority,
+            'message'           => $message,
+            'status'            => 'open',
+            'first_occurred_at' => now(),
+            'last_occurred_at'  => now(),
+            'occurrences'       => 1,
+        ]);
+        $stats['alerts_opened']++;
+    }
+
+    /**
+     * Priorité de l'incident — cahier §7.3 : MOTOR_SAFETY_EVENT est
+     * toujours priorité maximale, quel que soit le calcul de gravité.
+     */
+    private function priorityFor(string $type, string $severity): string
+    {
+        if ($type === EventNormalizerService::TYPE_MOTOR_SAFETY_EVENT) {
+            return 'critical';
+        }
+
+        return match ($severity) {
+            'critical' => 'high',
+            'warning'  => 'normal',
+            default    => 'low',
+        };
+    }
 
     private function reconcileHealthAlert(Device $device, string $severity, ?float $heapBytes, array &$stats): void
     {
@@ -498,31 +575,11 @@ class FleetSyncService
             return;
         }
 
-        $open = Alert::where('device_id', $device->id)
-            ->where('type', 'heap_low')
-            ->whereIn('status', ['open', 'acknowledged'])
-            ->first();
-
         $message = $heapBytes !== null
             ? sprintf('Heap disponible %s octets (%s ko).', (int) $heapBytes, round($heapBytes / 1024, 2))
             : 'Mémoire disponible sous le seuil configuré.';
 
-        if ($open) {
-            if ($open->severity !== $severity) {
-                $open->update(['severity' => $severity, 'message' => $message]);
-            }
-
-            return;
-        }
-
-        Alert::create([
-            'device_id' => $device->id,
-            'type'      => 'heap_low',
-            'severity'  => $severity,
-            'message'   => $message,
-            'status'    => 'open',
-        ]);
-        $stats['alerts_opened']++;
+        $this->upsertIncident($device, 'heap_low', $severity, $message, $stats);
     }
 
     private function handleOfflineAlert(Device $device, array &$stats): void
@@ -531,26 +588,12 @@ class FleetSyncService
             return;
         }
 
-        $exists = Alert::where('device_id', $device->id)
-            ->where('type', 'offline')
-            ->whereIn('status', ['open', 'acknowledged'])
-            ->exists();
+        $message = sprintf(
+            'Aucune télémétrie depuis plus de %d minutes.',
+            (int) config('spiderhome.offline_after_minutes')
+        );
 
-        if ($exists) {
-            return;
-        }
-
-        Alert::create([
-            'device_id' => $device->id,
-            'type'      => 'offline',
-            'severity'  => 'warning',
-            'message'   => sprintf(
-                'Aucune télémétrie depuis plus de %d minutes.',
-                (int) config('spiderhome.offline_after_minutes')
-            ),
-            'status'    => 'open',
-        ]);
-        $stats['alerts_opened']++;
+        $this->upsertIncident($device, 'offline', 'warning', $message, $stats);
     }
 
     private function resolveAlerts(Device $device, string $type, array &$stats): void

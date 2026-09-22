@@ -72,6 +72,11 @@ export class CustomerService {
     );
   }
 
+  /** Fiche parc client (CSV) — cahier §7.1, sans secrets techniques (MAC, clé legacy, serveur SUPLA). */
+  exportFleet(id: number): Observable<Blob> {
+    return this.http.get(`${this.base}/${id}/export`, { responseType: 'blob' });
+  }
+
   private _invalidateAll(): void {
     // Invalidate all customer cache entries
     ['customers:', 'customers:all=true', 'customers:per_page=20'].forEach(k =>

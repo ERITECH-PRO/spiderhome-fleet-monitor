@@ -24,6 +24,7 @@ class Device extends Model
         'last_heap_kb', 'last_frag_pct', 'last_uptime', 'last_status',
         'supla_connected', 'registered_at', 'last_connected_at',
         'wifi_rssi', 'wifi_quality_pct', 'connection_uptime',
+        'installed_at', 'installer_name', 'initial_firmware', 'warranty_until',
     ];
 
     protected $casts = [
@@ -36,6 +37,8 @@ class Device extends Model
         'registered_at'      => 'datetime',
         'last_connected_at'  => 'datetime',
         'supla_connected'    => 'boolean',
+        'installed_at'       => 'date',
+        'warranty_until'     => 'date',
         'wifi_rssi'          => 'integer',
         'wifi_quality_pct'   => 'integer',
         'connection_uptime'  => 'integer',

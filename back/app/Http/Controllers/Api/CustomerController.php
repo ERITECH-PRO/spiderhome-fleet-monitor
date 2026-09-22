@@ -65,6 +65,53 @@ class CustomerController extends Controller
     }
 
     /**
+     * GET /api/customers/{customer}/export
+     * Fiche parc client — cahier §7.1 : « Exporter une fiche parc client
+     * sans exposer les secrets techniques. »
+     *
+     * Volontairement exclus : MAC, legacy_device_key, supla_server, guid —
+     * identifiants techniques internes plutôt qu'information client.
+     */
+    public function export(Customer $customer)
+    {
+        $customer->load(['sites.devices.model']);
+
+        $filename = 'parc-' . \Illuminate\Support\Str::slug($customer->name) . '-' . now()->format('Y-m-d') . '.csv';
+
+        $columns = [
+            'Site', 'Module', 'Modèle', 'MCU', 'Firmware', 'Statut',
+            'Installé le', 'Installateur', 'Garantie jusqu\'au', 'Dernière connexion',
+        ];
+
+        return response()->streamDownload(function () use ($customer, $columns) {
+            $out = fopen('php://output', 'w');
+            fputs($out, "\xEF\xBB\xBF"); // BOM UTF-8 : accents lisibles sous Excel
+            fputcsv($out, $columns, ';');
+
+            foreach ($customer->sites as $site) {
+                foreach ($site->devices as $device) {
+                    fputcsv($out, [
+                        $site->name,
+                        $device->label ?? $device->serial_number,
+                        $device->model?->name ?? '—',
+                        $device->model?->mcu ?? '—',
+                        $device->firmware ?? '—',
+                        $device->status,
+                        $device->installed_at?->format('d/m/Y') ?? '—',
+                        $device->installer_name ?? '—',
+                        $device->warranty_until?->format('d/m/Y') ?? '—',
+                        $device->last_seen_at?->format('d/m/Y H:i') ?? '—',
+                    ], ';');
+                }
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
      * PUT/PATCH /api/customers/{customer}
      */
     public function update(CustomerRequest $request, Customer $customer)

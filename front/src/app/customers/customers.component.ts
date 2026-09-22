@@ -132,11 +132,13 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
 
               <!-- actions -->
               <td class="text-right">
-                <div class="table-actions" *ngIf="auth.canManageFleet(); else readOnlyBadge">
-                  <app-button variant="icon" size="sm" iconName="pencil" ariaLabel="Modifier la fiche client" tooltip="Modifier les informations" (btnClick)="openEdit(c)"></app-button>
-                  <app-button variant="icon" size="sm" iconName="trash" ariaLabel="Supprimer le client" tooltip="Supprimer" [isDanger]="true" (btnClick)="promptDelete(c)"></app-button>
+                <div class="table-actions">
+                  <app-button variant="icon" size="sm" iconName="download" ariaLabel="Exporter la fiche parc" tooltip="Exporter la fiche parc (CSV)" (btnClick)="exportFleet(c)"></app-button>
+                  <ng-container *ngIf="auth.canManageFleet()">
+                    <app-button variant="icon" size="sm" iconName="pencil" ariaLabel="Modifier la fiche client" tooltip="Modifier les informations" (btnClick)="openEdit(c)"></app-button>
+                    <app-button variant="icon" size="sm" iconName="trash" ariaLabel="Supprimer le client" tooltip="Supprimer" [isDanger]="true" (btnClick)="promptDelete(c)"></app-button>
+                  </ng-container>
                 </div>
-                <ng-template #readOnlyBadge><span class="text-muted text-xs">—</span></ng-template>
               </td>
             </tr>
 
@@ -468,6 +470,19 @@ export class CustomersComponent implements OnInit {
   }
 
   promptDelete(c: Customer) { this.deletingCustomer = c; this.showDeleteModal = true; this.cdr.markForCheck(); }
+
+  exportFleet(c: Customer) {
+    this.customerService.exportFleet(c.id).subscribe({
+      next: (blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `parc-${c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      }
+    });
+  }
 
   executeDelete() {
     if (!this.deletingCustomer) return;

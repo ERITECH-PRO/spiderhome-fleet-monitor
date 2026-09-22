@@ -7,15 +7,18 @@ use App\Http\Requests\StoreServiceRequestRequest;
 use App\Http\Requests\UpdateServiceRequestRequest;
 use App\Models\ServiceRequest;
 use App\Models\ServiceRequestHistory;
+use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ServiceRequestController extends Controller
 {
     // ── Relations systématiquement chargées ───────────────────────────────────
-    private const RELATIONS = ['customer', 'site', 'device', 'assignedTo'];
+    private const RELATIONS = ['customer', 'site', 'device', 'assignedToUser'];
 
     // ────────────────────────────────────────────────────────────────────────────
     //  GET /api/service-requests
@@ -54,12 +57,13 @@ class ServiceRequestController extends Controller
     public function store(StoreServiceRequestRequest $request): JsonResponse
     {
         $data = $request->validated();
+        unset($data['attachment']);
 
         // Un compte client ne peut créer une demande que pour lui-même,
         // quoi que le payload contienne — l'isolation ne doit jamais
         // reposer sur la bonne foi du client.
         $user = $request->user();
-        if ($user->role === \App\Models\User::ROLE_CLIENT) {
+        if ($user->role === User::ROLE_CLIENT) {
             if (! $user->customer_id) {
                 return response()->json([
                     'error'   => 'NO_CUSTOMER_LINKED',
@@ -67,6 +71,15 @@ class ServiceRequestController extends Controller
                 ], 422);
             }
             $data['customer_id'] = $user->customer_id;
+        }
+
+        // Photo ou vidéo facultative — cahier §7.4.
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            $path = $file->store('service-requests', 'local');
+            $data['attachment_path'] = $path;
+            $data['attachment_name'] = $file->getClientOriginalName();
+            $data['attachment_mime'] = $file->getClientMimeType();
         }
 
         $sr = ServiceRequest::create($data);
@@ -81,6 +94,8 @@ class ServiceRequestController extends Controller
             'comment'            => 'Demande créée.',
         ]);
 
+        NotificationService::serviceRequestCreated($sr);
+
         return response()->json($sr->load(self::RELATIONS), 201);
     }
 
@@ -89,9 +104,9 @@ class ServiceRequestController extends Controller
     // ────────────────────────────────────────────────────────────────────────────
     public function show(ServiceRequest $serviceRequest): JsonResponse
     {
-        return response()->json(
-            $serviceRequest->load([...self::RELATIONS, 'histories.changedBy'])
-        );
+        $serviceRequest->load([...self::RELATIONS, 'histories.changedBy']);
+
+        return response()->json($this->hideInternalNotesFromClient($serviceRequest));
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -124,6 +139,14 @@ class ServiceRequestController extends Controller
         }
 
         $serviceRequest->update($data);
+
+        if (array_key_exists('status', $data) || array_key_exists('assigned_to', $data)) {
+            NotificationService::serviceRequestChanged(
+                $serviceRequest,
+                'Mise à jour — ' . $serviceRequest->reference,
+                $comment ?: 'La demande a été mise à jour.'
+            );
+        }
 
         return response()->json($serviceRequest->load([...self::RELATIONS, 'histories.changedBy']));
     }
@@ -161,6 +184,12 @@ class ServiceRequestController extends Controller
 
         $serviceRequest->update($update);
 
+        NotificationService::serviceRequestChanged(
+            $serviceRequest,
+            'Statut mis à jour — ' . $serviceRequest->reference,
+            'Nouveau statut : ' . $data['status'] . ($data['comment'] ?? '' ? ' — ' . $data['comment'] : '')
+        );
+
         return response()->json($serviceRequest->load([...self::RELATIONS, 'histories.changedBy']));
     }
 
@@ -169,9 +198,66 @@ class ServiceRequestController extends Controller
     // ────────────────────────────────────────────────────────────────────────────
     public function histories(ServiceRequest $serviceRequest): JsonResponse
     {
-        return response()->json(
-            $serviceRequest->histories()->with('changedBy')->get()
-        );
+        $histories = $serviceRequest->histories()->with('changedBy')->get();
+
+        if (Auth::user()?->role === User::ROLE_CLIENT) {
+            $histories = $histories->where('is_internal', false)->values();
+        }
+
+        return response()->json($histories);
+    }
+
+    /**
+     * POST /api/service-requests/{id}/comments
+     * Ajoute une note à l'historique, sans changer le statut.
+     * « Les notes internes restent invisibles au client » (cahier §7.4) :
+     * seul un compte interne peut poser is_internal=true ; un client ne
+     * peut jamais en créer, quoi qu'il envoie dans le payload.
+     */
+    public function addComment(Request $request, ServiceRequest $serviceRequest): JsonResponse
+    {
+        $data = $request->validate([
+            'comment'     => ['required', 'string', 'max:2000'],
+            'is_internal' => ['nullable', 'boolean'],
+        ]);
+
+        $user = $request->user();
+        $isInternal = $user->role !== User::ROLE_CLIENT && (bool) ($data['is_internal'] ?? false);
+
+        $history = ServiceRequestHistory::create([
+            'service_request_id' => $serviceRequest->id,
+            'field'              => 'note',
+            'old_value'          => null,
+            'new_value'          => null,
+            'changed_by'         => $user->id,
+            'comment'            => $data['comment'],
+            'is_internal'        => $isInternal,
+        ]);
+
+        if (! $isInternal) {
+            NotificationService::serviceRequestChanged(
+                $serviceRequest,
+                'Nouveau message — ' . $serviceRequest->reference,
+                $data['comment']
+            );
+        }
+
+        return response()->json($history->load('changedBy'), 201);
+    }
+
+    /**
+     * Retire les notes internes de la réponse quand l'appelant est un client.
+     */
+    private function hideInternalNotesFromClient(ServiceRequest $serviceRequest): ServiceRequest
+    {
+        if (Auth::user()?->role === User::ROLE_CLIENT && $serviceRequest->relationLoaded('histories')) {
+            $serviceRequest->setRelation(
+                'histories',
+                $serviceRequest->histories->where('is_internal', false)->values()
+            );
+        }
+
+        return $serviceRequest;
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -181,5 +267,24 @@ class ServiceRequestController extends Controller
     {
         $serviceRequest->delete();
         return response()->json(['message' => 'Demande d\'intervention supprimée.']);
+    }
+
+    /**
+     * GET /api/service-requests/{id}/attachment
+     * Le binding de route sur ServiceRequest applique déjà l'isolation
+     * client (CustomerScoped) : un client ne peut pas atteindre la pièce
+     * jointe d'une demande qui n'est pas la sienne — {id} résoudrait en 404.
+     */
+    public function attachment(ServiceRequest $serviceRequest)
+    {
+        if (! $serviceRequest->attachment_path || ! Storage::disk('local')->exists($serviceRequest->attachment_path)) {
+            return response()->json(['message' => 'Aucune pièce jointe.'], 404);
+        }
+
+        return Storage::disk('local')->response(
+            $serviceRequest->attachment_path,
+            $serviceRequest->attachment_name,
+            ['Content-Type' => $serviceRequest->attachment_mime ?? 'application/octet-stream']
+        );
     }
 }

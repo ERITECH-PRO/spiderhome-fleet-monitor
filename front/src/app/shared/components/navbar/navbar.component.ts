@@ -1,7 +1,8 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
+import { NotificationService, AppNotification } from '../../../services/notification.service';
 import { IconComponent } from '../icon/icon.component';
 import { ConfirmModalComponent } from '../confirm-modal/confirm-modal.component';
 import { DataPreloadService } from '../../../services/data-preload.service';
@@ -53,6 +54,13 @@ import { SpiderHomeLogoComponent } from '../spiderhome-logo/spiderhome-logo.comp
             <app-icon name="warning" [size]="17" class="nav-svg"></app-icon>
             <span>Evenements</span>
           </a>
+          <a class="nav-link" routerLink="/incidents"
+             routerLinkActive="active"
+             *ngIf="auth.isStaff()"
+             title="Incidents — file priorisée, assignation et diagnostic">
+            <app-icon name="note" [size]="17" class="nav-svg"></app-icon>
+            <span>Incidents</span>
+          </a>
           <a class="nav-link" routerLink="/interventions"
              routerLinkActive="active"
              (mouseenter)="prefetchAll()" title="Demandes d'intervention & SAV">
@@ -91,6 +99,30 @@ import { SpiderHomeLogoComponent } from '../spiderhome-logo/spiderhome-logo.comp
               class="theme-icon"
             ></app-icon>
           </button>
+
+          <!-- 🔔 Notifications in-app (cahier §7.4) -->
+          <div class="notif-wrap">
+            <button type="button" class="theme-toggle-btn" (click)="toggleNotifDropdown()"
+                    aria-label="Notifications" title="Notifications">
+              <app-icon name="warning" [size]="17"></app-icon>
+              <span class="notif-badge" *ngIf="(notif.unreadCount$ | async) as count">{{ count > 9 ? '9+' : count }}</span>
+            </button>
+            <div class="notif-dropdown" *ngIf="showNotifDropdown">
+              <div class="notif-dropdown-header">
+                <strong>Notifications</strong>
+                <button type="button" class="notif-mark-all" (click)="notif.markAllRead()">Tout marquer comme lu</button>
+              </div>
+              <div class="notif-list">
+                <div class="notif-empty" *ngIf="(notif.notifications$ | async)?.length === 0">Aucune notification.</div>
+                <a *ngFor="let n of (notif.notifications$ | async)" class="notif-item" [class.unread]="!n.read_at"
+                   (click)="onNotifClick(n)">
+                  <div class="notif-item-title">{{ n.title }}</div>
+                  <div class="notif-item-msg" *ngIf="n.message">{{ n.message }}</div>
+                  <div class="notif-item-time">{{ n.created_at | date:'dd/MM HH:mm' }}</div>
+                </a>
+              </div>
+            </div>
+          </div>
 
           <div class="user-pill" *ngIf="auth.currentUser$ | async as user">
             <span class="user-dot"></span>
@@ -371,6 +403,31 @@ import { SpiderHomeLogoComponent } from '../spiderhome-logo/spiderhome-logo.comp
       transform: translateY(-1px);
     }
 
+    .notif-wrap { position: relative; }
+    .notif-badge {
+      position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px; padding: 0 3px;
+      border-radius: 999px; background: #ef4444; color: #fff; font-size: 0.62rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; line-height: 1;
+    }
+    .notif-dropdown {
+      position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-height: 400px;
+      background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 0.75rem;
+      box-shadow: 0 12px 32px rgba(0,0,0,.25); overflow: hidden; z-index: 200; display: flex; flex-direction: column;
+    }
+    .notif-dropdown-header {
+      display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.9rem;
+      border-bottom: 1px solid var(--border-color); font-size: 0.82rem;
+    }
+    .notif-mark-all { background: none; border: none; color: var(--primary); font-size: 0.72rem; cursor: pointer; }
+    .notif-list { overflow-y: auto; max-height: 340px; }
+    .notif-empty { padding: 1.5rem; text-align: center; font-size: 0.8rem; color: var(--text-muted); }
+    .notif-item { display: block; padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--border-color); cursor: pointer; text-decoration: none; color: inherit; }
+    .notif-item:hover { background: var(--card-hover); }
+    .notif-item.unread { background: rgba(59,130,246,.06); }
+    .notif-item-title { font-size: 0.82rem; font-weight: 600; }
+    .notif-item-msg { font-size: 0.76rem; color: var(--text-secondary); margin-top: 0.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .notif-item-time { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.2rem; }
+
     .logout-btn:active {
       transform: scale(0.95);
     }
@@ -402,13 +459,28 @@ import { SpiderHomeLogoComponent } from '../spiderhome-logo/spiderhome-logo.comp
 })
 export class NavbarComponent {
   showLogoutModal = false;
+  showNotifDropdown = false;
 
   constructor(
     public auth: AuthService,
     public theme: ThemeService,
-    private preloadService: DataPreloadService
+    public notif: NotificationService,
+    private preloadService: DataPreloadService,
+    private router: Router
   ) {
     this.preloadAll();
+    this.notif.startPolling();
+  }
+
+  toggleNotifDropdown(): void {
+    this.showNotifDropdown = !this.showNotifDropdown;
+    if (this.showNotifDropdown) this.notif.fetch().subscribe();
+  }
+
+  onNotifClick(n: AppNotification): void {
+    if (!n.read_at) this.notif.markRead(n.id);
+    this.showNotifDropdown = false;
+    if (n.link) this.router.navigateByUrl(n.link);
   }
 
   promptLogout() {
@@ -417,6 +489,7 @@ export class NavbarComponent {
 
   confirmLogout() {
     this.showLogoutModal = false;
+    this.notif.reset();
     this.auth.logout();
   }
 

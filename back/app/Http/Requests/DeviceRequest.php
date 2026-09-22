@@ -29,6 +29,10 @@ class DeviceRequest extends FormRequest
             'label'              => 'nullable|string|max:255',
             'ip_address'         => 'nullable|string|max:45',
             'supla_server'       => 'nullable|string|max:255',
+            'installed_at'       => 'nullable|date',
+            'installer_name'     => 'nullable|string|max:191',
+            'initial_firmware'   => 'nullable|string|max:64',
+            'warranty_until'     => 'nullable|date',
         ];
     }
 

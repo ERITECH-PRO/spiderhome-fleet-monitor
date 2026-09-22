@@ -257,6 +257,18 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
             <label class="popup-label">Nom personnalisé / Emplacement</label>
             <input class="popup-input" [(ngModel)]="form.label" name="label" placeholder="Ex: Entrée Hall A">
           </div>
+          <div class="popup-field">
+            <label class="popup-label">Installé le</label>
+            <input class="popup-input" type="date" [(ngModel)]="form.installed_at" name="installed_at">
+          </div>
+          <div class="popup-field">
+            <label class="popup-label">Installateur</label>
+            <input class="popup-input" [(ngModel)]="form.installer_name" name="installer_name" placeholder="Nom du technicien">
+          </div>
+          <div class="popup-field">
+            <label class="popup-label">Garantie jusqu'au</label>
+            <input class="popup-input" type="date" [(ngModel)]="form.warranty_until" name="warranty_until">
+          </div>
         </div>
       </form>
       <div modal-footer class="popup-footer-actions">
@@ -690,7 +702,7 @@ export class DevicesComponent implements OnInit {
     this.formSites = this.formCustomerId
       ? this.allSites.filter(s => s.customer_id === this.formCustomerId)
       : [...this.allSites];
-    this.form = { ...d };
+    this.form = { ...d, installed_at: this.toDateInput(d.installed_at), warranty_until: this.toDateInput(d.warranty_until) };
     this.errors = {};
     this.showModal = true;
     this.cdr.markForCheck();
@@ -698,16 +710,25 @@ export class DevicesComponent implements OnInit {
 
   closeModal() { this.showModal = false; this.saving = false; this.cdr.markForCheck(); }
 
+  /** "2026-09-15T00:00:00.000000Z" (JSON Laravel) → "2026-09-15" (input date HTML). */
+  private toDateInput(value?: string | null): string | null {
+    return value ? value.slice(0, 10) : null;
+  }
+
   save() {
     if (!this.editingId) return; // Sécurité : édition uniquement
     this.saving = true;
     this.errors = {};
     this.cdr.markForCheck();
 
-    // Seuls le label et le site_id sont modifiables — les données techniques viennent du module
+    // Le label, le site et les informations de pose (§7.1 du cahier) sont modifiables —
+    // les données techniques (heap, firmware, statut…) viennent du module lui-même.
     const payload: Partial<Device> = {
       site_id: this.form.site_id ? +this.form.site_id : undefined,
       label: this.form.label || null,
+      installed_at: this.form.installed_at || null,
+      installer_name: this.form.installer_name || null,
+      warranty_until: this.form.warranty_until || null,
     };
 
     this.deviceService.update(this.editingId, payload).subscribe({

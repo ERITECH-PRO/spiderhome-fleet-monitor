@@ -22,6 +22,7 @@ class UpdateServiceRequestRequest extends FormRequest
             'assigned_to' => ['nullable', 'integer', 'exists:users,id'],
             'title'       => ['sometimes', 'string', 'max:255'],
             'reason'      => ['nullable', 'string', 'max:255'],
+            'category'    => ['nullable', Rule::in(array_keys(ServiceRequest::CATEGORIES))],
             'description' => ['sometimes', 'string', 'max:5000'],
             'priority'    => ['nullable', Rule::in(ServiceRequest::PRIORITIES)],
             'status'      => ['nullable', Rule::in(ServiceRequest::STATUSES)],

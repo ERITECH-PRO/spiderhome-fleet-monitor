@@ -19,16 +19,31 @@ export interface ServiceRequestHistory {
   old_value: string | null;
   new_value: string | null;
   comment: string | null;
+  is_internal?: boolean;
   changed_by: SRUser | null;
   created_at: string;
 }
+
+/** Cahier §7.4 — catégories de problème. Doit rester synchronisé avec ServiceRequest::CATEGORIES (back). */
+export const SR_CATEGORIES: { value: string; label: string }[] = [
+  { value: 'connectivity', label: 'Connectivité (Wi-Fi, réseau)' },
+  { value: 'power',        label: 'Alimentation / coupures' },
+  { value: 'hardware',     label: 'Panne matérielle' },
+  { value: 'motor',        label: 'Sécurité moteur / volet' },
+  { value: 'performance',  label: 'Performance / mémoire' },
+  { value: 'installation', label: 'Question d\'installation' },
+  { value: 'other',        label: 'Autre' },
+];
 
 export interface ServiceRequest {
   id: number;
   reference: string;
   title: string;
   reason: string | null;
+  category?: string | null;
   description: string;
+  attachment_name?: string | null;
+  attachment_mime?: string | null;
   status: SRStatus;
   priority: SRPriority;
   customer_id: number;
@@ -74,10 +89,12 @@ export interface StoreServiceRequestPayload {
   assigned_to?: number | null;
   title:        string;
   reason?:      string;
+  category?:    string;
   description:  string;
   priority?:    SRPriority;
   status?:      SRStatus;
   desired_at?:  string | null;
+  attachment?:  File | null;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -103,7 +120,16 @@ export class ServiceRequestService {
   }
 
   create(payload: StoreServiceRequestPayload): Observable<ServiceRequest> {
-    return this.http.post<ServiceRequest>(this.base, payload);
+    if (!payload.attachment) {
+      const { attachment, ...rest } = payload;
+      return this.http.post<ServiceRequest>(this.base, rest);
+    }
+    const form = new FormData();
+    Object.entries(payload).forEach(([k, v]) => {
+      if (v === undefined || v === null) return;
+      form.append(k, v instanceof File ? v : String(v));
+    });
+    return this.http.post<ServiceRequest>(this.base, form);
   }
 
   update(id: number, payload: Partial<StoreServiceRequestPayload> & { comment?: string }): Observable<ServiceRequest> {
@@ -116,6 +142,16 @@ export class ServiceRequestService {
 
   getHistories(id: number): Observable<ServiceRequestHistory[]> {
     return this.http.get<ServiceRequestHistory[]>(`${this.base}/${id}/histories`);
+  }
+
+  /** Ajoute une note à l'historique sans changer le statut (cahier §7.4). */
+  addComment(id: number, comment: string, isInternal = false): Observable<ServiceRequestHistory> {
+    return this.http.post<ServiceRequestHistory>(`${this.base}/${id}/comments`, { comment, is_internal: isInternal });
+  }
+
+  /** Pièce jointe (photo/vidéo) — à récupérer via HttpClient (jeton Bearer requis, pas une simple URL). */
+  downloadAttachment(id: number): Observable<Blob> {
+    return this.http.get(`${this.base}/${id}/attachment`, { responseType: 'blob' });
   }
 
   delete(id: number): Observable<{ message: string }> {
