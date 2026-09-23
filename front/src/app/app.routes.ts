@@ -7,6 +7,7 @@ import { DevicesComponent } from './devices/devices.component';
 import { InterventionsComponent } from './interventions/interventions.component';
 import { EventsComponent } from './events/events.component';
 import { IncidentsComponent } from './incidents/incidents.component';
+import { ProfileComponent } from './profile/profile.component';
 import { UsersComponent } from './users/users.component';
 import { AuditComponent } from './audit/audit.component';
 import { authGuard } from './guards/auth.guard';
@@ -25,6 +26,7 @@ export const routes: Routes = [
       { path: 'devices', component: DevicesComponent },
       { path: 'events', component: EventsComponent },
       { path: 'incidents', component: IncidentsComponent },
+      { path: 'profile', component: ProfileComponent },
       { path: 'interventions', component: InterventionsComponent },
       { path: 'users', component: UsersComponent, canActivate: [roleGuard(['admin'])] },
       { path: 'audit', component: AuditComponent, canActivate: [roleGuard(['admin', 'support', 'quality'])] },

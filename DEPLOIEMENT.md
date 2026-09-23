@@ -192,6 +192,22 @@ Tester une restauration sur un serveur de recette **avant** la mise en service.
 
 ---
 
+## 8bis. Double authentification (MFA) — recommandé pour les comptes admin
+
+Non imposée techniquement (voir `CAHIER_DES_CHARGES_ECARTS.md` §10 pour le
+pourquoi), mais fortement recommandée en production. Une fois le compte
+administrateur créé et connecté une première fois :
+
+1. Ouvrir **Mon compte** (icône avec le nom, en haut à droite)
+2. « Activer la double authentification »
+3. Scanner le QR avec Google Authenticator, 1Password, Authy, ou saisir le
+   secret manuellement
+4. Confirmer avec le code à 6 chiffres affiché par l'application
+5. **Noter les 8 codes de récupération affichés** — ils ne réapparaîtront
+   jamais ; sans eux, un appareil perdu bloque l'accès au compte
+
+---
+
 ## 9. Vérifications après déploiement
 
 | Contrôle | Commande / action | Attendu |

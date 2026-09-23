@@ -123,6 +123,24 @@ Bug de conception trouvé en cours de route : la relation Eloquent
 (collision de clé), ce qui aurait rendu le sélecteur technicien inutilisable
 dès sa mise en service. Corrigé avant de construire l'écran qui en dépend.
 
+### 10. MFA administrateurs — §10
+Aucune double authentification n'existait. Ajouté : TOTP (RFC 6238) en PHP
+pur — aucune nouvelle dépendance Composer, contrairement au QR code plus tôt
+dans cette session. Compatible Google Authenticator, 1Password, Authy.
+
+- Secret et codes de récupération chiffrés en base (cast `encrypted`, clé
+  APP_KEY) — jamais en clair
+- Connexion en deux temps : mot de passe correct + 2FA activée → jeton de
+  défi temporaire (5 min), puis `/login/2fa` avec le code à 6 chiffres ou
+  un code de récupération à usage unique
+- Écran **Mon compte** (`/profile`) : activation avec QR à scanner, 8 codes
+  de récupération affichés une seule fois, désactivation avec mot de passe
+
+Ouvert à tout rôle plutôt que forcé pour admin uniquement : forcer
+l'activation dès le tout premier login créerait un risque de blocage
+(impossible de configurer la 2FA sans être déjà connecté). Fortement
+recommandé pour les comptes admin en production — voir DEPLOIEMENT.md.
+
 ---
 
 ## Structurellement absent — nécessite un chantier séparé
@@ -136,7 +154,7 @@ correctifs.
 | MQTT, Redis/BullMQ, MinIO | Infrastructure absente de la stack Docker actuelle |
 | OTA firmware (catalogue, campagnes, consentement, rollback réel) | Sous-système entier ; le cahier précise lui-même qu'ESP-07 ne fait pas d'OTA |
 | Application mobile technicien (scan QR, intervention hors-ligne) | Développement Flutter séparé |
-| MFA administrateurs | Authentification actuelle : Sanctum + mot de passe seul |
+| MFA imposée obligatoirement pour le rôle admin | Disponible et fonctionnelle pour tous les rôles (§10 ci-dessus), mais pas forcée techniquement à l'activation d'un compte admin |
 | Notifications par e-mail / push (SAV) | Seules les notifications in-app existent ; infra Brevo réservée à l'OTP mot de passe oublié |
 | Renommage des statuts SAV (« reçue », « rendez-vous proposé »…) | Cosmétique ; les statuts actuels (`open`/`in_progress`/`resolved`/`closed`) restent fonctionnels |
 | Disponibilités du client sous forme de plages horaires | `desired_at` (une date unique) existe déjà ; un vrai calendrier de disponibilités n'a pas été ajouté |

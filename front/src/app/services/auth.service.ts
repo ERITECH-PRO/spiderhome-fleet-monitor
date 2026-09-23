@@ -10,6 +10,7 @@ export interface User {
   email: string;
   role: string;
   customer_id?: number | null;
+  two_factor_enabled?: boolean;
 }
 
 /** Rôles internes (par opposition au compte client) — reflète App\Models\User::STAFF_ROLES côté API. */
@@ -111,6 +112,23 @@ export class AuthService {
 
   login(email: string, password: string): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/login`, { email, password }).pipe(
+      tap(response => {
+        if (response.ok && response.access_token) {
+          localStorage.setItem(this.TOKEN_KEY, response.access_token);
+          if (response.user) {
+            this._persistUser(response.user);
+            this.currentUserSubject.next(response.user);
+          }
+        }
+        // Si response.requires_2fa === true : aucune session n'est créée ici,
+        // voir loginTwoFactor() pour la seconde étape.
+      })
+    );
+  }
+
+  /** Seconde étape de connexion — cahier §10 (MFA). */
+  loginTwoFactor(challengeToken: string, code: string): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/login/2fa`, { challenge_token: challengeToken, code }).pipe(
       tap(response => {
         if (response.ok && response.access_token) {
           localStorage.setItem(this.TOKEN_KEY, response.access_token);

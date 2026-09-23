@@ -9,7 +9,7 @@ import { ThemeService } from '../services/theme.service';
 
 import { SpiderHomeLogoComponent } from '../shared/components/spiderhome-logo/spiderhome-logo.component';
 
-export type LoginViewMode = 'login' | 'forgot_email' | 'forgot_otp' | 'forgot_password' | 'forgot_success';
+export type LoginViewMode = 'login' | 'two_factor' | 'forgot_email' | 'forgot_otp' | 'forgot_password' | 'forgot_success';
 
 @Component({
   selector: 'app-login',
@@ -47,6 +47,12 @@ export class LoginComponent implements OnDestroy {
   resendCountdown = 0;
   private countdownTimer: any = null;
 
+  // MFA — cahier §10 (double authentification)
+  challengeToken = '';
+  twoFactorCode = '';
+  twoFactorError = '';
+  isTwoFactorLoading = false;
+
   constructor(
     private authService: AuthService,
     private router: Router,
@@ -75,19 +81,61 @@ export class LoginComponent implements OnDestroy {
 
     this.authService.login(this.email, this.password).subscribe({
       next: (res) => {
-        if (res.ok) {
+        this.isLoading = false;
+        if (res.requires_2fa) {
+          this.challengeToken = res.challenge_token;
+          this.twoFactorCode = '';
+          this.twoFactorError = '';
+          this.viewMode = 'two_factor';
+        } else if (res.ok) {
           this.preloadService.preloadAll();
           this.router.navigate(['/dashboard']);
         } else {
           this.errorMessage = res.message || 'Erreur de connexion';
         }
-        this.isLoading = false;
       },
       error: (err) => {
         this.errorMessage = err.error?.message || 'Identifiants incorrects ou serveur indisponible.';
         this.isLoading = false;
       }
     });
+  }
+
+  // ── MFA : second facteur (cahier §10) ───────────────────────────────────────
+
+  onVerifyTwoFactor() {
+    const code = (this.twoFactorCode || '').trim();
+    if (!code) {
+      this.twoFactorError = 'Veuillez saisir votre code.';
+      return;
+    }
+
+    this.isTwoFactorLoading = true;
+    this.twoFactorError = '';
+
+    this.authService.loginTwoFactor(this.challengeToken, code).subscribe({
+      next: (res) => {
+        this.isTwoFactorLoading = false;
+        if (res.ok) {
+          this.preloadService.preloadAll();
+          this.router.navigate(['/dashboard']);
+        } else {
+          this.twoFactorError = res.message || 'Code invalide.';
+        }
+      },
+      error: (err) => {
+        this.isTwoFactorLoading = false;
+        this.twoFactorError = err.error?.message || 'Code invalide ou session expirée.';
+      }
+    });
+  }
+
+  cancelTwoFactor() {
+    this.viewMode = 'login';
+    this.password = '';
+    this.challengeToken = '';
+    this.twoFactorCode = '';
+    this.twoFactorError = '';
   }
 
   // ── Forgot Password Navigation ──────────────────────────────────────────────

@@ -124,10 +124,10 @@ import { SpiderHomeLogoComponent } from '../spiderhome-logo/spiderhome-logo.comp
             </div>
           </div>
 
-          <div class="user-pill" *ngIf="auth.currentUser$ | async as user">
+          <a class="user-pill" routerLink="/profile" *ngIf="auth.currentUser$ | async as user" title="Mon compte">
             <span class="user-dot"></span>
             <span class="user-name">{{ user.name ? user.name : 'Admin SpiderHome' }}</span>
-          </div>
+          </a>
 
           <!-- Compact Icon Logout Button -->
           <button
@@ -361,7 +361,11 @@ import { SpiderHomeLogoComponent } from '../spiderhome-logo/spiderhome-logo.comp
       white-space: nowrap;
       flex-shrink: 0;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.15s ease;
     }
+    .user-pill:hover { border-color: rgba(148, 163, 184, 0.45); }
 
     .user-dot {
       width: 6px;

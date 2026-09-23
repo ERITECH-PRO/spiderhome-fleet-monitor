@@ -223,6 +223,46 @@
 
         </ng-container>
 
+        <!-- MFA — second facteur (cahier §10) -->
+        <ng-container *ngIf="viewMode === 'two_factor'">
+          <div class="card-header">
+            <h1 class="card-title">Vérification en deux étapes</h1>
+            <p class="card-sub">Saisissez le code de votre application d'authentification, ou un code de récupération.</p>
+          </div>
+
+          <div *ngIf="twoFactorError" class="err-banner" role="alert">
+            <app-icon name="warning" [size]="14" class="err-icon"></app-icon>
+            <span>{{ twoFactorError }}</span>
+          </div>
+
+          <form (ngSubmit)="onVerifyTwoFactor()" class="card-form">
+            <div class="field">
+              <label for="twoFactorCode" class="field-label">Code de vérification</label>
+              <div class="field-input-wrap">
+                <app-icon name="lock" [size]="15" class="field-icon"></app-icon>
+                <input type="text" id="twoFactorCode" name="twoFactorCode"
+                  [(ngModel)]="twoFactorCode" class="field-input otp-input"
+                  placeholder="123456 ou XXXX-XXXX"
+                  inputmode="text" autocomplete="one-time-code" required autofocus>
+              </div>
+            </div>
+
+            <button type="submit" class="submit-btn" [disabled]="isTwoFactorLoading" [class.loading]="isTwoFactorLoading">
+              <svg *ngIf="isTwoFactorLoading" class="spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <span>{{ isTwoFactorLoading ? 'Vérification…' : 'Valider' }}</span>
+            </button>
+
+            <div class="back-row">
+              <button type="button" class="back-link" (click)="cancelTwoFactor()">
+                <app-icon name="arrow-left" [size]="13"></app-icon> Retour
+              </button>
+            </div>
+          </form>
+        </ng-container>
+
 
         <!-- ══════════════════════════════════════════════════════════════════
              VIEW: FORGOT — STEP 3 (new password)

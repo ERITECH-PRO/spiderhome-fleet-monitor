@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\DeviceEventController;
@@ -32,6 +33,7 @@ use App\Models\User;
 
 Route::middleware('throttle:10,1')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('login/2fa', [AuthController::class, 'loginTwoFactor']);
     Route::post('forgot-password', [PasswordResetController::class, 'forgotPassword']);
     Route::post('verify-otp',      [PasswordResetController::class, 'verifyOtp']);
     Route::post('reset-password',  [PasswordResetController::class, 'resetPassword']);
@@ -62,6 +64,12 @@ Route::middleware('auth:sanctum')->group(function () use ($staff, $manage) {
     // ── Session ─────────────────────────────────────────────────────────────
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('me',      [AuthController::class, 'me']);
+
+    // ── Double authentification (MFA) — cahier §10 ───────────────────────────
+    Route::get('two-factor/status',   [TwoFactorController::class, 'status']);
+    Route::post('two-factor/enable',  [TwoFactorController::class, 'enable']);
+    Route::post('two-factor/confirm', [TwoFactorController::class, 'confirm']);
+    Route::post('two-factor/disable', [TwoFactorController::class, 'disable']);
 
     // ── Registre métier ─────────────────────────────────────────────────────
     // Lecture : tout compte authentifié (résultat filtré par rôle).
