@@ -77,6 +77,13 @@ export class CustomerService {
     return this.http.get(`${this.base}/${id}/export`, { responseType: 'blob' });
   }
 
+  /** Droit à l'effacement RGPD (§10) — admin uniquement, irréversible. */
+  anonymize(id: number): Observable<{ ok: boolean; message: string; customer: Customer }> {
+    return this.http.post<{ ok: boolean; message: string; customer: Customer }>(`${this.base}/${id}/anonymize`, { confirm: true }).pipe(
+      tap(() => this._invalidateAll())
+    );
+  }
+
   private _invalidateAll(): void {
     // Invalidate all customer cache entries
     ['customers:', 'customers:all=true', 'customers:per_page=20'].forEach(k =>

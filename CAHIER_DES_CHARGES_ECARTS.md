@@ -141,6 +141,92 @@ l'activation dès le tout premier login créerait un risque de blocage
 (impossible de configurer la 2FA sans être déjà connecté). Fortement
 recommandé pour les comptes admin en production — voir DEPLOIEMENT.md.
 
+### 11. Fraîcheur des données et hachage des mots de passe — §10 / §11
+Deux écarts numériques trouvés en relisant les exigences non fonctionnelles :
+
+- **Fraîcheur** : le cahier cible un état visible sous 30 s après réception ;
+  la synchronisation tournait toutes les 60 s (`Schedule::everyMinute()`,
+  la granularité minimale de cron). Le conteneur `scheduler` appelle
+  désormais `spiderhome:sync` toutes les 20 s directement (sans passer par
+  `schedule:run`, qui reste utilisé pour un déploiement non-Docker — un
+  service systemd équivalent est documenté dans `DEPLOIEMENT.md` pour ce cas,
+  puisque le cron classique ne descend pas sous la minute).
+- **Hachage** : le cahier demande explicitement Argon2id ; aucun
+  `config/hashing.php` n'existait, Laravel utilisait donc bcrypt par défaut.
+  Ajouté avec les paramètres recommandés OWASP. Les mots de passe déjà en
+  base ne sont pas affectés — chaque hash porte son algorithme dans son
+  préfixe, donc la vérification des anciens mots de passe bcrypt continue
+  de fonctionner ; seuls les nouveaux (création de compte, réinitialisation)
+  utilisent Argon2id.
+
+Vérifié en même temps et déjà couvert sans modification : le rate limiting
+global existe via le middleware `api` de Laravel 11 (60 req/min par défaut),
+en plus du throttle renforcé (10/min) déjà en place sur login/OTP.
+
+### 12. Spécification OpenAPI — §9
+Un fichier `docs/api/openapi.yaml` existait déjà (écrit par le stagiaire)
+mais datait d'avant toutes les évolutions de cette session : il référençait
+encore l'ancien module OTA supprimé (`/update-notices/.../consent`),
+des valeurs d'énumération fausses par rapport au code réel (priorités SAV
+`medium` au lieu de `normal`, type d'événement `WIFI_LOST` renommé depuis
+en `WIFI_FLAPPING`), et ne mentionnait ni les rôles ni l'isolation client.
+
+Réécrit intégralement : 40 chemins documentés (authentification, MFA,
+registre métier, incidents, SAV, administration, notifications, tableau de
+bord), schémas de données alignés sur les modèles Eloquent réels, note
+d'isolation par rôle sur chaque groupe. Validé — YAML syntaxiquement
+correct, toutes les références `$ref` résolues (vérifié par script, pas
+seulement relu à l'œil).
+
+Le préfixe `/api/v1` cité dans la même exigence du cahier n'a délibérément
+pas été adopté (voir la table ci-dessous) : la spec documente les chemins
+réels de production (`/api/...`).
+
+**Trouvé en cours de route, non corrigé** : `docs/tests/test-plan.md` et
+`docs/postman/SpiderHome.postman_collection.json` datent eux aussi d'avant
+cette session (mêmes énumérations obsolètes, plus une adresse e-mail
+personnelle du stagiaire utilisée comme identifiant de test dans les deux
+fichiers). Les réécrire proprement demanderait de pouvoir exécuter les
+tests pour les valider, ce qui n'est pas possible ici — signalé plutôt que
+silencieusement laissé tel quel. Postman peut de toute façon importer
+`docs/api/openapi.yaml` directement pour régénérer une collection à jour.
+
+### 13. Scan de QR pour rattacher un module — §7.1
+« Scanner un QR code pour rattacher une carte au client et au site » —
+jusqu'ici seule la génération du QR existait, pas le scan. Ajouté un
+composant `QrScannerComponent` basé sur l'API navigateur native
+`BarcodeDetector` (Chrome/Edge/Opera) — **aucune dépendance npm ajoutée**,
+même prudence que pour le TOTP après les deux dépendances Composer
+problématiques plus tôt dans cette session.
+
+Flux : bouton « Scanner un module » (Modules, admin/support) → caméra →
+décodage du JSON déjà encodé par `DeviceController::qr()` (`spdr` = numéro
+de série) → recherche côté API → ouverture directe de la fiche d'édition
+pour réaffectation au bon site.
+
+**Limite honnête, non contournable sans dépendance externe** : `Barcode-
+Detector` n'est pas supporté par Firefox ni Safari à ce jour — message
+clair affiché sur ces navigateurs plutôt qu'un échec silencieux, avec
+repli vers la recherche manuelle déjà existante. Nécessite aussi HTTPS (ou
+localhost), comme tout accès caméra navigateur.
+
+### 14. Droit à l'effacement RGPD — §10
+« Minimisation, durée de conservation, export et suppression des données
+personnelles » : l'export existait (§8), pas la suppression. Ajouté
+`POST /customers/{id}/anonymize` (admin uniquement, confirmation explicite
+requise, tracé dans le journal d'audit) : efface nom, e-mail, téléphone,
+adresse, ville, SIRET et notes, **sans supprimer** la ligne, les sites, les
+modules ni l'historique technique. Choix de conception délibéré : le droit
+à l'effacement vise la personne, pas la destruction d'un historique de
+maintenance légitime — et un vrai `DELETE` en cascade aurait cassé
+l'intégrité de la télémétrie que l'architecture veille précisément à ne
+jamais toucher.
+
+**Limite connue** : ne touche pas aux comptes utilisateur de rôle « client »
+rattachés à ce client — à supprimer séparément via `DELETE /users/{id}`. Je
+n'ai pas voulu modifier silencieusement des comptes d'authentification sans
+mécanisme de désactivation clair dans le modèle actuel.
+
 ---
 
 ## Structurellement absent — nécessite un chantier séparé
@@ -153,11 +239,14 @@ correctifs.
 | Stack NestJS + React + Flutter | Réécriture complète, pas une évolution du code actuel |
 | MQTT, Redis/BullMQ, MinIO | Infrastructure absente de la stack Docker actuelle |
 | OTA firmware (catalogue, campagnes, consentement, rollback réel) | Sous-système entier ; le cahier précise lui-même qu'ESP-07 ne fait pas d'OTA |
-| Application mobile technicien (scan QR, intervention hors-ligne) | Développement Flutter séparé |
+| Application mobile technicien (intervention hors-ligne) | Développement Flutter séparé ; le scan QR lui-même est fait — §13 ci-dessus (web, pas encore mobile natif) |
 | MFA imposée obligatoirement pour le rôle admin | Disponible et fonctionnelle pour tous les rôles (§10 ci-dessus), mais pas forcée techniquement à l'activation d'un compte admin |
 | Notifications par e-mail / push (SAV) | Seules les notifications in-app existent ; infra Brevo réservée à l'OTP mot de passe oublié |
 | Renommage des statuts SAV (« reçue », « rendez-vous proposé »…) | Cosmétique ; les statuts actuels (`open`/`in_progress`/`resolved`/`closed`) restent fonctionnels |
 | Disponibilités du client sous forme de plages horaires | `desired_at` (une date unique) existe déjà ; un vrai calendrier de disponibilités n'a pas été ajouté |
+| « Compte rendu » d'intervention comme champ formel distinct | Couvert de façon informelle : le commentaire déjà associé à un changement de statut (ex. passage à « résolu ») joue ce rôle, sans champ dédié ni caractère obligatoire |
+| Versionnement `/api/v1` | Risque de casser le frontend déjà déployé sans pouvoir tester le changement dans cet environnement ; non tenté (OpenAPI lui-même est fait, §12 ci-dessus) |
+| `docs/tests/test-plan.md` et la collection Postman à jour | Datent d'avant cette session ; à régénérer depuis `docs/api/openapi.yaml` ou en repassant les 18 scénarios de recette manuellement |
 
 Si vous voulez avancer sur l'un de ces points, dites lequel en priorité.
 

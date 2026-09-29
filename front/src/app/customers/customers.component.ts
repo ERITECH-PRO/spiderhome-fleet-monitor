@@ -138,6 +138,7 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
                     <app-button variant="icon" size="sm" iconName="pencil" ariaLabel="Modifier la fiche client" tooltip="Modifier les informations" (btnClick)="openEdit(c)"></app-button>
                     <app-button variant="icon" size="sm" iconName="trash" ariaLabel="Supprimer le client" tooltip="Supprimer" [isDanger]="true" (btnClick)="promptDelete(c)"></app-button>
                   </ng-container>
+                  <app-button variant="icon" size="sm" iconName="warning" ariaLabel="Effacer les données personnelles" tooltip="Anonymiser (RGPD)" [isDanger]="true" *ngIf="auth.isAdmin()" (btnClick)="promptAnonymize(c)"></app-button>
                 </div>
               </td>
             </tr>
@@ -243,6 +244,14 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
       subMessage="Attention : tous les sites et modules rattachés à ce client seront également impactés. Cette action est irréversible."
       confirmText="Supprimer définitivement" cancelText="Conserver le client" type="danger"
       [loading]="deleting" (confirm)="executeDelete()" (cancel)="showDeleteModal = false">
+    </app-confirm-modal>
+
+    <!-- Anonymisation RGPD (§10) -->
+    <app-confirm-modal [isOpen]="showAnonymizeModal" title="Effacer les données personnelles"
+      [message]="'Effacer définitivement le nom, l\'e-mail, le téléphone, l\'adresse et le SIRET de « ' + (anonymizingCustomer?.name || '') + ' » ?'"
+      subMessage="Irréversible. Les sites, modules et l'historique technique sont conservés — seules les données personnelles sont effacées."
+      confirmText="Effacer définitivement" cancelText="Annuler" type="danger"
+      [loading]="anonymizing" (confirm)="executeAnonymize()" (cancel)="showAnonymizeModal = false">
     </app-confirm-modal>
 
     <!-- Error Alert Modal -->
@@ -364,6 +373,9 @@ export class CustomersComponent implements OnInit {
   total = 0;
   errors: Record<string, string[]> = {};
   showDeleteModal = false;
+  showAnonymizeModal = false;
+  anonymizingCustomer: Customer | null = null;
+  anonymizing = false;
   deletingCustomer: Customer | null = null;
   deleting = false;
   showErrorModal = false;
@@ -470,6 +482,32 @@ export class CustomersComponent implements OnInit {
   }
 
   promptDelete(c: Customer) { this.deletingCustomer = c; this.showDeleteModal = true; this.cdr.markForCheck(); }
+
+  promptAnonymize(c: Customer) { this.anonymizingCustomer = c; this.showAnonymizeModal = true; this.cdr.markForCheck(); }
+
+  executeAnonymize() {
+    if (!this.anonymizingCustomer) return;
+    this.anonymizing = true;
+    this.cdr.markForCheck();
+    this.customerService.anonymize(this.anonymizingCustomer.id).subscribe({
+      next: () => {
+        this.anonymizing = false;
+        this.showAnonymizeModal = false;
+        this.anonymizingCustomer = null;
+        this.load();
+        this.cdr.markForCheck();
+      },
+      error: (err: any) => {
+        this.anonymizing = false;
+        this.showAnonymizeModal = false;
+        this.errorModalTitle = 'Effacement impossible';
+        this.errorModalMessage = err.error?.message || 'Impossible d\'effacer les données de ce client.';
+        this.errorModalSubMessage = '';
+        this.showErrorModal = true;
+        this.cdr.markForCheck();
+      }
+    });
+  }
 
   exportFleet(c: Customer) {
     this.customerService.exportFleet(c.id).subscribe({

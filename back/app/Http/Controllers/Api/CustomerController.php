@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\CustomerRequest;
 use App\Models\AuditLog;
 use App\Models\Customer;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class CustomerController extends Controller
@@ -73,8 +74,7 @@ class CustomerController extends Controller
      * identifiants techniques internes plutôt qu'information client.
      */
     public function export(Customer $customer)
-    {
-        $customer->load(['sites.devices.model']);
+    {        $customer->load(['sites.devices.model']);
 
         $filename = 'parc-' . \Illuminate\Support\Str::slug($customer->name) . '-' . now()->format('Y-m-d') . '.csv';
 
@@ -140,5 +140,49 @@ class CustomerController extends Controller
         AuditLog::record('customer.deleted', $customer, ['name' => $customer->name]);
         $customer->delete();
         return response()->json(['message' => 'Client supprimé avec succès.'], 200);
+    }
+
+    /**
+     * POST /api/customers/{customer}/anonymize
+     * Droit à l'effacement des données personnelles — cahier §10 :
+     * « Minimisation, durée de conservation, export et suppression des
+     *   données personnelles. »
+     *
+     * Efface les champs personnellement identifiants (nom, e-mail,
+     * téléphone, adresse, SIRET, notes) sans supprimer la ligne ni casser
+     * les sites/modules/historique technique qui en dépendent : l'objectif
+     * du droit à l'effacement est la personne, pas la destruction d'un
+     * historique de maintenance légitime. Irréversible — confirmation
+     * explicite requise.
+     *
+     * Ne touche pas aux comptes utilisateur de rôle « client » rattachés à
+     * ce client (le cas échéant, les supprimer séparément via
+     * DELETE /api/users/{id}).
+     */
+    public function anonymize(Request $request, Customer $customer): JsonResponse
+    {
+        $request->validate([
+            'confirm' => ['required', 'accepted'],
+        ]);
+
+        $before = $customer->only(['name', 'email', 'phone', 'address', 'city', 'siret']);
+
+        $customer->update([
+            'name'    => "Client anonymisé #{$customer->id}",
+            'email'   => null,
+            'phone'   => null,
+            'address' => null,
+            'city'    => null,
+            'siret'   => null,
+            'notes'   => null,
+        ]);
+
+        AuditLog::record('customer.anonymized', $customer, ['fields_cleared' => array_keys($before)]);
+
+        return response()->json([
+            'ok'      => true,
+            'message' => 'Données personnelles effacées. Sites, modules et historique technique conservés.',
+            'customer' => $customer->fresh(),
+        ]);
     }
 }

@@ -78,6 +78,8 @@ Route::middleware('auth:sanctum')->group(function () use ($staff, $manage) {
     Route::get('devices/{id}/health', [DeviceController::class, 'health']);
     Route::get('devices/{id}/qr', [DeviceController::class, 'qr']);
     Route::get('customers/{customer}/export', [CustomerController::class, 'export']);
+    Route::post('customers/{customer}/anonymize', [CustomerController::class, 'anonymize'])
+        ->middleware('role:' . User::ROLE_ADMIN);
     Route::apiResource('customers', CustomerController::class)
         ->except(['store', 'update', 'destroy']);
     Route::apiResource('customers', CustomerController::class)

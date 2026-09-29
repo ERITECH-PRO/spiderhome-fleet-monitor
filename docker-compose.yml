@@ -3,8 +3,8 @@
 #
 #   web        : Nginx — Angular + reverse-proxy FastCGI vers l'API   → :8089
 #   api        : PHP-FPM — Laravel (migrations au démarrage)
-#   scheduler  : même image, exécute « artisan schedule:run » chaque minute
-#                (c'est lui qui fait vivre la synchronisation automatique)
+#   scheduler  : même image, exécute « artisan spiderhome:sync » toutes les
+#                20 s (cahier §11 : état visible sous 30 s après réception)
 #
 # La base MySQL n'est PAS dans cette stack : elle tourne déjà dans le conteneur
 # « mysql_central » (port hôte 3307). Voir .env.docker.
@@ -59,8 +59,8 @@ services:
       - "host.docker.internal:host-gateway"
     command: >
       sh -c "while true; do
-               php artisan schedule:run --no-interaction >> /dev/null 2>&1;
-               sleep 60;
+               php artisan spiderhome:sync --quiet-log >> /dev/null 2>&1;
+               sleep 20;
              done"
     networks:
       - spiderhome

@@ -1,30 +1,42 @@
 openapi: 3.0.3
 info:
-  title: SpiderHome Fleet Manager API
-  description: Spécification officielle du contrat d'intégration API REST Laravel 11 pour la plateforme de supervision de la flotte IoT SpiderHome.
-  version: 2.0.0
+  title: SpiderHome Fleet Monitor API
+  description: |
+    Plateforme de supervision du parc SpiderHome (cahier des charges §9 —
+    « API versionnée, OpenAPI, pagination, filtres, codes d'erreur stables »).
+
+    **Isolation par rôle** : chaque route lit et écrit au travers d'un scope
+    Eloquent automatique (`App\Models\Concerns\CustomerScoped`) — un compte
+    de rôle `client` ne voit jamais les données d'un autre client, sans
+    action du contrôleur. Les routes marquées 🔒 sont en plus restreintes
+    par rôle via le middleware `role:...` (voir la colonne « Rôles » de
+    chaque groupe ci-dessous et `back/routes/api.php`).
+
+    **Non couvert par cette spécification** : le préfixe `/api/v1` du cahier
+    n'a pas été adopté — un changement de préfixe aurait cassé le frontend
+    Angular déjà déployé sans pouvoir être testé dans l'environnement de
+    développement (voir `CAHIER_DES_CHARGES_ECARTS.md`). Les chemins
+    ci-dessous sont donc les chemins réels de production, sous `/api`.
+  version: 3.0.0
   contact:
     name: Support Technique SpiderHome
-    email: support@spiderhome.com
+    email: support@spiderhome.org
 
 servers:
-  - url: http://localhost:8000/api
-    description: Serveur de Développement Local (Laravel Sanctum)
-
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+  - url: https://monitor.spiderhome.org/api
+    description: Production (derrière Nginx + PHP-FPM, voir DOCKER.md)
+  - url: http://localhost:8089/api
+    description: Développement local (docker compose)
 
 security:
   - bearerAuth: []
 
 paths:
+  # ── Authentification ───────────────────────────────────────────────────
   /login:
     post:
-      summary: Authentification utilisateur
+      tags: [Authentification]
+      summary: Première étape — e-mail + mot de passe
       security: []
       requestBody:
         required: true
@@ -34,267 +46,553 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email:
-                  type: string
-                  example: ramif792@gmail.com
-                password:
-                  type: string
-                  example: password
+                email: { type: string, example: "admin@spiderhome.org" }
+                password: { type: string, format: password }
       responses:
         '200':
-          description: Connexion réussie, émission du jeton Bearer
+          description: |
+            Deux formes possibles selon que la double authentification
+            (cahier §10) est activée sur le compte :
+            - MFA désactivée → `access_token` émis immédiatement
+            - MFA activée → `requires_2fa: true` + `challenge_token`,
+              à soumettre sur `POST /login/2fa` (voir plus bas)
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok: { type: boolean, example: true }
-                  access_token: { type: string, example: "12|vR6Nh2xWMTz7..." }
-                  token_type: { type: string, example: "Bearer" }
-                  user:
-                    type: object
+                oneOf:
+                  - type: object
                     properties:
-                      id: { type: integer, example: 1 }
-                      name: { type: string, example: "Admin SpiderHome" }
-                      email: { type: string, example: "ramif792@gmail.com" }
-                      role: { type: string, example: "admin" }
-        '401':
-          description: Identifiants incorrects
-        '422':
-          description: Erreur de validation des champs
+                      ok: { type: boolean, example: true }
+                      access_token: { type: string }
+                      token_type: { type: string, example: "Bearer" }
+                      user: { $ref: '#/components/schemas/AppUser' }
+                  - type: object
+                    properties:
+                      ok: { type: boolean, example: true }
+                      requires_2fa: { type: boolean, example: true }
+                      challenge_token: { type: string }
+                      expires_in: { type: integer, example: 300 }
+        '401': { description: "Identifiants incorrects" }
+      x-rate-limit: "10 requêtes / minute / IP"
+
+  /login/2fa:
+    post:
+      tags: [Authentification]
+      summary: Seconde étape — code TOTP ou code de récupération
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_token, code]
+              properties:
+                challenge_token: { type: string }
+                code: { type: string, example: "123456", description: "Code à 6 chiffres, ou code de récupération XXXX-XXXX à usage unique" }
+      responses:
+        '200': { description: "Jeton d'accès émis" }
+        '419': { description: "Jeton de défi expiré (> 5 min) — reconnexion nécessaire" }
+        '422': { description: "Code invalide" }
 
   /logout:
     post:
+      tags: [Authentification]
       summary: Déconnexion et révocation du jeton
-      responses:
-        '200':
-          description: Déconnexion réussie
+      responses: { '200': { description: "Déconnexion réussie" } }
 
   /me:
     get:
+      tags: [Authentification]
       summary: Profil de l'utilisateur connecté
-      responses:
-        '200':
-          description: Informations du compte connecté
+      responses: { '200': { description: "Compte connecté" } }
 
+  # ── Double authentification (cahier §10) ────────────────────────────────
+  /two-factor/status:
+    get:
+      tags: [MFA]
+      summary: État de la double authentification du compte connecté
+      responses: { '200': { description: "{ enabled: boolean }" } }
+
+  /two-factor/enable:
+    post:
+      tags: [MFA]
+      summary: Démarre l'activation — génère un secret TOTP non confirmé et son QR
+      responses: { '200': { description: "{ secret, qr_svg, otpauth }" } }
+
+  /two-factor/confirm:
+    post:
+      tags: [MFA]
+      summary: Confirme l'activation avec un premier code — renvoie les codes de récupération (une seule fois)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string, example: "123456" } } }
+      responses: { '200': { description: "{ recovery_codes: string[] }" }, '422': { description: "Code invalide" } }
+
+  /two-factor/disable:
+    post:
+      tags: [MFA]
+      summary: Désactive la double authentification (mot de passe requis)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [password], properties: { password: { type: string, format: password } } }
+      responses: { '200': { description: "{ ok: true }" }, '422': { description: "Mot de passe incorrect" } }
+
+  # ── Registre métier ──────────────────────────────────────────────────────
   /customers:
     get:
-      summary: Liste paginée des clients
+      tags: [Clients]
+      summary: Liste paginée des clients (scope client automatique)
       parameters:
         - in: query
           name: search
           schema: { type: string }
-          description: Recherche par nom, email ou SIRET
         - in: query
           name: page
           schema: { type: integer, default: 1 }
       responses:
         '200':
           description: Collection de clients
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Customer' } }
     post:
-      summary: Créer un compte client
+      tags: [Clients]
+      summary: 🔒 Créer un client — admin/support uniquement
+      description: "Normalement inutile : un client est créé automatiquement à l'enregistrement d'un module (voir FleetSyncService)."
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name, email, phone]
-              properties:
-                name: { type: string, example: "Ben Salah Ahmed" }
-                email: { type: string, example: "ahmed@example.test" }
-                phone: { type: string, example: "+216 71 123 456" }
-                city: { type: string, example: "Tunis" }
-                siret: { type: string, example: "98765432100019" }
-      responses:
-        '201':
-          description: Client créé avec succès
-        '422':
-          description: Email ou téléphone déjà utilisé
-
-  /customers/{id}:
-    put:
-      summary: Modifier un client
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
+              required: [name]
               properties:
                 name: { type: string }
-                phone: { type: string }
-                status: { type: string, enum: [active, prospect, inactive] }
+                email: { type: string, nullable: true }
+                phone: { type: string, nullable: true }
+                status: { type: string, enum: [active, inactive, prospect, suspended] }
       responses:
-        '200':
-          description: Client mis à jour
+        '201': { description: "Client créé" }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: "E-mail ou téléphone déjà utilisé" }
+
+  /customers/{id}:
+    get:
+      tags: [Clients]
+      summary: Fiche client (sites + modules)
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      responses: { '200': { description: "Client" }, '404': { description: "Introuvable ou hors périmètre (isolation)" } }
+    put:
+      tags: [Clients]
+      summary: 🔒 Modifier un client — admin/support
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      responses: { '200': { description: "Client mis à jour" } }
     delete:
-      summary: Supprimer un client
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+      tags: [Clients]
+      summary: 🔒 Supprimer un client — admin/support
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      responses: { '200': { description: "Client supprimé" } }
+
+  /customers/{id}/export:
+    get:
+      tags: [Clients]
+      summary: Fiche parc client au format CSV (cahier §7.1)
+      description: "N'expose jamais MAC, clé legacy ni serveur SUPLA — voir CAHIER_DES_CHARGES_ECARTS.md §8."
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
       responses:
         '200':
-          description: Client supprimé
+          description: Fichier CSV (BOM UTF-8)
+          content: { text/csv: { schema: { type: string, format: binary } } }
+
+  /customers/{id}/anonymize:
+    post:
+      tags: [Clients]
+      summary: 🔒 Droit à l'effacement RGPD (cahier §10) — admin uniquement, irréversible
+      description: "Efface nom, e-mail, téléphone, adresse, ville, SIRET et notes ; conserve la ligne, les sites, les modules et l'historique technique. Ne touche pas aux comptes utilisateur de rôle client rattachés (à supprimer séparément via DELETE /users/{id})."
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [confirm], properties: { confirm: { type: boolean, enum: [true] } } }
+      responses:
+        '200': { description: "Données personnelles effacées" }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: "Confirmation explicite manquante" }
 
   /sites:
     get:
-      summary: Liste des sites d'installation
-      parameters:
-        - in: query
-          name: customer_id
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Liste des sites
+      tags: [Sites]
+      summary: Liste des sites (scope client automatique)
+      parameters: [{ in: query, name: customer_id, schema: { type: integer } }]
+      responses: { '200': { description: "Liste des sites", content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Site' } } } } } }
     post:
-      summary: Créer un site d'installation
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [customer_id, name, address]
-              properties:
-                customer_id: { type: integer, example: 1 }
-                name: { type: string, example: "Tunis Centre" }
-                address: { type: string, example: "Avenue Habib Bourguiba, Tunis" }
-                timezone: { type: string, example: "Africa/Tunis" }
-      responses:
-        '201':
-          description: Site créé
+      tags: [Sites]
+      summary: 🔒 Créer un site — admin/support
+      responses: { '201': { description: "Site créé" } }
+
+  /sites/{id}:
+    put: { tags: [Sites], summary: "🔒 Modifier un site — admin/support", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "Site mis à jour" } } }
+    delete: { tags: [Sites], summary: "🔒 Supprimer un site — admin/support (refusé si des modules y sont encore installés)", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "Site supprimé" }, '422': { description: "Des modules dépendent encore de ce site" } } }
+
+  /device-models:
+    get: { tags: [Modèles], summary: "Liste des modèles de module", responses: { '200': { description: "Liste" } } }
+    post: { tags: [Modèles], summary: "🔒 Créer un modèle — admin/support", responses: { '201': { description: "Modèle créé" } } }
 
   /devices:
     get:
-      summary: Liste des modules IoT
-      responses:
-        '200':
-          description: Liste des modules
+      tags: [Modules]
+      summary: Liste des modules IoT (scope client automatique)
+      responses: { '200': { description: "Liste des modules", content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Device' } } } } } }
     post:
-      summary: Enregistrer un nouveau module IoT
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [site_id, model_id, serial_number]
-              properties:
-                site_id: { type: integer, example: 1 }
-                model_id: { type: integer, example: 1 }
-                serial_number: { type: string, example: "SN-001" }
-                mac: { type: string, example: "3C:71:BF:99:12:34" }
-                firmware: { type: string, example: "2.4.1" }
-      responses:
-        '201':
-          description: Module enregistré avec succès
-        '422':
-          description: Le numéro de série (serial_number) est déjà utilisé.
+      tags: [Modules]
+      summary: 🔒 Créer un module manuellement — admin/support
+      description: "Normalement inutile : provisionnement automatique par FleetSyncService/DeviceStatusController depuis heap_logs/module_installs."
+      responses: { '201': { description: "Module créé" } }
+
+  /devices/{id}:
+    put: { tags: [Modules], summary: "🔒 Modifier un module (emplacement, installateur, garantie…) — admin/support", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "Module mis à jour" } } }
+    delete: { tags: [Modules], summary: "🔒 Supprimer un module — admin/support", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "Module supprimé" } } }
 
   /devices/{id}/health:
     get:
-      summary: Fiche diagnostic santé d'un module IoT
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Diagnostic santé unifié (healthy, warning, critical)
+      tags: [Modules]
+      summary: Fiche diagnostic unifiée — zone (sain/surveillance/critique), score 0-100 explicable et bloc Statut cloud
+      description: "{id} accepte indifféremment l'id numérique, le GUID, le numéro de série, la MAC ou la clé legacy."
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: "Diagnostic santé unifié" } }
+
+  /devices/{id}/qr:
+    get:
+      tags: [Modules]
+      summary: QR code de la fiche module (cahier §7/§8, identification terrain)
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: "{ device, payload, qr_content, svg, data_url }" } }
 
   /device-events:
     get:
-      summary: Journal des événements télémétriques
+      tags: [Événements]
+      summary: Journal des événements télémétriques normalisés (cahier §7.3)
       parameters:
         - in: query
           name: type
-          schema: { type: string, enum: [BOOT, WATCHDOG_RESET, LOW_HEAP, WIFI_LOST, SUPLA_OFFLINE, UPDATE_REQUIRED] }
-      responses:
-        '200':
-          description: Liste des événements filtrés
+          schema: { type: string, enum: [BOOT, RESTART_REQUESTED, WATCHDOG_RESET, BROWNOUT, LOW_HEAP, HIGH_FRAGMENTATION, WIFI_FLAPPING, SUPLA_OFFLINE, LITTLEFS_ERROR, UPDATE_FAILED, ROLLBACK, MOTOR_SAFETY_EVENT, UPDATE_REQUIRED] }
+      responses: { '200': { description: "Liste des événements filtrés" } }
 
+  # ── Incidents (cahier §7.3 / §12) ────────────────────────────────────────
+  /alerts:
+    get:
+      tags: [Incidents]
+      summary: File des incidents groupés
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, acknowledged, resolved] }
+        - in: query
+          name: priority
+          schema: { type: string, enum: [low, normal, high, critical] }
+        - in: query
+          name: unassigned
+          schema: { type: boolean }
+      responses: { '200': { description: "Liste des incidents", content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Alert' } } } } } }
+
+  /alerts/{id}/assign:
+    patch:
+      tags: [Incidents]
+      summary: 🔒 Assigner un propriétaire — admin/support/technician
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { owner_id: { type: integer, nullable: true } } } } }
+      responses: { '200': { description: "Incident mis à jour" } }
+
+  /alerts/{id}/diagnostic:
+    patch:
+      tags: [Incidents]
+      summary: 🔒 Renseigner le diagnostic — admin/support/technician
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      responses: { '200': { description: "Incident mis à jour" } }
+
+  /alerts/{id}/acknowledge:
+    patch: { tags: [Incidents], summary: "🔒 Acquitter — admin/support/technician", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "OK" } } }
+  /alerts/{id}/resolve:
+    patch: { tags: [Incidents], summary: "🔒 Résoudre — admin/support/technician", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "OK" } } }
+  /alerts/{id}/reopen:
+    patch: { tags: [Incidents], summary: "🔒 Réouvrir — admin/support/technician", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "OK" } } }
+
+  # ── SAV / Interventions (cahier §7.4) ───────────────────────────────────
   /service-requests:
     get:
-      summary: Liste des demandes d'intervention SAV
-      responses:
-        '200':
-          description: Collection des tickets SAV
+      tags: [SAV]
+      summary: Liste des demandes (scope client ; un technicien ne voit que ses demandes assignées)
+      responses: { '200': { description: "Collection de tickets SAV", content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ServiceRequest' } } } } } }
     post:
-      summary: Créer une demande d'intervention
+      tags: [SAV]
+      summary: Créer une demande — un client ne peut créer que pour lui-même
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
-              required: [customer_id, site_id, device_id, title]
+              required: [customer_id, title, description]
               properties:
-                customer_id: { type: integer, example: 1 }
-                site_id: { type: integer, example: 1 }
-                device_id: { type: integer, example: 1 }
-                title: { type: string, example: "Instabilité heap mémoire" }
-                priority: { type: string, enum: [low, medium, high, critical] }
-                status: { type: string, enum: [open, in_progress, resolved, cancelled] }
-      responses:
-        '201':
-          description: Demande d'intervention créée
+                customer_id: { type: integer }
+                site_id: { type: integer, nullable: true }
+                device_id: { type: integer, nullable: true }
+                title: { type: string }
+                category: { type: string, enum: [connectivity, power, hardware, motor, performance, installation, other] }
+                description: { type: string }
+                desired_at: { type: string, format: date, nullable: true }
+                attachment: { type: string, format: binary, description: "Photo ou vidéo facultative — 15 Mo max (jpg/png/webp/mp4/mov/webm)" }
+      responses: { '201': { description: "Demande créée" } }
 
   /service-requests/{id}/status:
     patch:
-      summary: Mettre à jour le statut d'une intervention
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+      tags: [SAV]
+      summary: 🔒 Changer le statut — admin/support/technician
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
       requestBody:
-        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [status], properties: { status: { type: string, enum: [open, in_progress, resolved, closed, cancelled] }, comment: { type: string } } }
+      responses: { '200': { description: "Statut mis à jour, historisé, client et technicien notifiés" } }
+
+  /service-requests/{id}/comments:
+    post:
+      tags: [SAV]
+      summary: Ajouter une note sans changer le statut — notes internes possibles (staff uniquement)
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      requestBody:
         content:
           application/json:
             schema:
               type: object
-              required: [status]
+              required: [comment]
               properties:
-                status: { type: string, enum: [open, in_progress, resolved, cancelled] }
-                comment: { type: string, example: "Technicien assigné pour intervention" }
-      responses:
-        '200':
-          description: Statut mis à jour et historisé dans la timeline
+                comment: { type: string }
+                is_internal: { type: boolean, default: false, description: "Ignoré (forcé à false) si l'appelant est un compte client — jamais visible par un client" }
+      responses: { '201': { description: "Note ajoutée" } }
 
-  /update-notices/{id}/consent:
-    patch:
-      summary: Simulation du consentement client pour mise à jour firmware
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [consent_status]
-              properties:
-                consent_status: { type: string, enum: [pending, granted, refused] }
-                notes: { type: string, example: "Consentement validé par le client" }
-      responses:
-        '200':
-          description: Consentement mis à jour sans action réseau vers le module IoT
-
-  /fleet/overview:
+  /service-requests/{id}/attachment:
     get:
-      summary: Synthèse KPIs et métriques de la flotte
+      tags: [SAV]
+      summary: Télécharge la pièce jointe (photo/vidéo) de la demande
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      responses: { '200': { description: "Fichier binaire" }, '404': { description: "Aucune pièce jointe, ou demande hors périmètre" } }
+
+  /service-requests/{id}/histories:
+    get:
+      tags: [SAV]
+      summary: Historique complet — notes internes automatiquement filtrées pour un appelant client
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      responses: { '200': { description: "Liste chronologique" } }
+
+  # ── Administration (cahier §4 / §10 / §12) ───────────────────────────────
+  /users:
+    get: { tags: [Administration], summary: "🔒 Liste des comptes — admin uniquement", responses: { '200': { description: "Liste", content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AppUser' } } } } } } }
+    post:
+      tags: [Administration]
+      summary: 🔒 Créer un compte — admin uniquement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, role]
+              properties:
+                name: { type: string }
+                email: { type: string }
+                password: { type: string, format: password, minLength: 10 }
+                role: { type: string, enum: [admin, support, technician, quality, client] }
+                customer_id: { type: integer, nullable: true, description: "Obligatoire si role=client" }
+      responses: { '201': { description: "Compte créé" }, '422': { $ref: '#/components/responses/ValidationFailed' } }
+
+  /users/{id}:
+    put: { tags: [Administration], summary: "🔒 Modifier un compte — admin uniquement", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "Compte mis à jour" } } }
+    delete: { tags: [Administration], summary: "🔒 Supprimer un compte — admin uniquement (jamais son propre compte)", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "Compte supprimé" }, '422': { description: "Impossible de supprimer son propre compte" } } }
+
+  /audit-logs:
+    get:
+      tags: [Administration]
+      summary: 🔒 Journal d'audit, paginé et filtrable — admin/support/quality (lecture seule, immuable)
+      parameters:
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses: { '200': { description: "Page d'entrées d'audit", content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AuditLogEntry' } } } } } }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: 30 dernières notifications in-app de l'utilisateur connecté (cahier §7.4)
+      responses: { '200': { description: "{ notifications: [...], unread_count: integer }" } }
+
+  /notifications/{id}/read:
+    patch: { tags: [Notifications], summary: "Marquer une notification comme lue", parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: "OK" } } }
+
+  /notifications/read-all:
+    patch: { tags: [Notifications], summary: "Marquer toutes les notifications comme lues", responses: { '200': { description: "OK" } } }
+
+  # ── Tableau de bord flotte ────────────────────────────────────────────────
+  /fleet/overview:
+    get: { tags: [Tableau de bord], summary: "Synthèse KPIs (clients, sites, modules, alertes, score de santé)", responses: { '200': { description: "Compteurs et liste des modules" } } }
+  /fleet/events:
+    get: { tags: [Tableau de bord], summary: "Flux d'événements filtrable", responses: { '200': { description: "Liste paginée" } } }
+  /fleet/heap-history:
+    get:
+      tags: [Tableau de bord]
+      summary: Historique mémoire d'un module pour le graphique
+      parameters: [{ in: query, name: device, required: true, schema: { type: string } }, { in: query, name: period, schema: { type: string, example: "7d" } }]
+      responses: { '200': { description: "Points de courbe + seuils" }, '404': { description: "Module introuvable ou hors périmètre client" } }
+
+  # ── Sonde de santé (publique) ─────────────────────────────────────────────
+  /health:
+    get:
+      tags: [Infrastructure]
+      summary: Sonde de santé — bases métier et legacy
+      security: []
       responses:
-        '200':
-          description: Compteurs métiers (clients, sites, modules, alertes)
+        '200': { description: "{ status: 'ok', services: { database_business: true, database_legacy: true } }" }
+        '503': { description: "Une des deux bases est injoignable" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "Sanctum personal access token"
+
+  responses:
+    Forbidden:
+      description: Rôle insuffisant pour cette action
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ValidationFailed:
+      description: Erreur de validation des champs
+      content: { application/json: { schema: { $ref: '#/components/schemas/ValidationError' } } }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: "UNAUTHORIZED" }
+        message: { type: string, example: "Accès refusé. Privilèges insuffisants." }
+
+    ValidationError:
+      type: object
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+    Customer:
+      type: object
+      properties:
+        id: { type: integer, example: 42 }
+        name: { type: string, example: "Client Démo SARL" }
+        email: { type: string, nullable: true, example: "contact@client-demo.tn" }
+        phone: { type: string, nullable: true }
+        server_address: { type: string, nullable: true, example: "cloud.spiderhome.org" }
+        status: { type: string, enum: [active, inactive, prospect, suspended] }
+        auto_provisioned: { type: boolean, description: "true si créé automatiquement depuis l'e-mail déclaré par un module" }
+        sites_count: { type: integer }
+        devices_count: { type: integer }
+
+    Site:
+      type: object
+      properties:
+        id: { type: integer }
+        customer_id: { type: integer }
+        name: { type: string, example: "Site principal" }
+        address: { type: string, nullable: true }
+        auto_provisioned: { type: boolean }
+        devices_count: { type: integer }
+
+    Device:
+      type: object
+      properties:
+        id: { type: integer }
+        site_id: { type: integer, nullable: true }
+        model_id: { type: integer, nullable: true }
+        serial_number: { type: string, example: "Spider_S10_E8DAA2" }
+        guid: { type: string, nullable: true }
+        mac: { type: string, nullable: true }
+        firmware: { type: string, nullable: true }
+        status: { type: string, enum: [online, offline, alert, retired] }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        installed_at: { type: string, format: date, nullable: true, description: "Pose physique déclarée par l'installateur (§7.1)" }
+        installer_name: { type: string, nullable: true }
+        warranty_until: { type: string, format: date, nullable: true }
+        health: { type: string, enum: [sain, surveillance, critique] }
+        health_score: { type: integer, nullable: true, minimum: 0, maximum: 100, description: "Score explicable §7.2, voir score_breakdown" }
+
+    Alert:
+      type: object
+      description: "Incident groupé (cahier §7.3) — une ligne par (module, type), pas par occurrence."
+      properties:
+        id: { type: integer }
+        device_id: { type: integer }
+        type: { type: string, enum: [heap_low, offline, BOOT, RESTART_REQUESTED, WATCHDOG_RESET, BROWNOUT, LOW_HEAP, HIGH_FRAGMENTATION, WIFI_FLAPPING, SUPLA_OFFLINE, LITTLEFS_ERROR, UPDATE_FAILED, ROLLBACK, MOTOR_SAFETY_EVENT, UPDATE_REQUIRED] }
+        severity: { type: string, enum: [info, warning, critical, error] }
+        priority: { type: string, enum: [low, normal, high, critical], description: "MOTOR_SAFETY_EVENT = critical toujours" }
+        message: { type: string }
+        diagnostic: { type: string, nullable: true }
+        occurrences: { type: integer, example: 3 }
+        first_occurred_at: { type: string, format: date-time }
+        last_occurred_at: { type: string, format: date-time }
+        owner: { type: object, nullable: true, properties: { id: { type: integer }, name: { type: string } } }
+        status: { type: string, enum: [open, acknowledged, resolved] }
+
+    ServiceRequest:
+      type: object
+      properties:
+        id: { type: integer }
+        reference: { type: string, example: "SAV-2026-00042" }
+        customer_id: { type: integer }
+        site_id: { type: integer, nullable: true }
+        device_id: { type: integer, nullable: true }
+        assigned_to: { type: integer, nullable: true, description: "id du technicien assigné (colonne brute — pas l'objet, voir assigned_to_user)" }
+        assigned_to_user: { type: object, nullable: true, properties: { id: { type: integer }, name: { type: string } } }
+        title: { type: string }
+        category: { type: string, nullable: true, enum: [connectivity, power, hardware, motor, performance, installation, other] }
+        description: { type: string }
+        attachment_name: { type: string, nullable: true, description: "Photo/vidéo jointe (§7.4) — GET .../attachment pour le contenu" }
+        priority: { type: string, enum: [critical, high, normal, low] }
+        status: { type: string, enum: [open, in_progress, resolved, closed, cancelled] }
+        desired_at: { type: string, format: date, nullable: true }
+
+    AppUser:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [admin, support, technician, quality, client] }
+        customer_id: { type: integer, nullable: true, description: "Obligatoire si role=client — pilote l'isolation automatique" }
+
+    AuditLogEntry:
+      type: object
+      description: "Immuable — aucune route PATCH/DELETE n'existe sur cette ressource (cahier §10, REC-11)."
+      properties:
+        id: { type: integer }
+        action: { type: string, example: "alert.resolved" }
+        auditable_type: { type: string, nullable: true }
+        auditable_id: { type: integer, nullable: true }
+        meta: { type: object, nullable: true }
+        ip_address: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        user: { type: object, nullable: true, properties: { id: { type: integer }, name: { type: string } } }

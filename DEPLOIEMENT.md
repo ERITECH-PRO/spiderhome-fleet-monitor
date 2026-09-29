@@ -112,6 +112,33 @@ crontab -e -u www-data
 C'est ce cron qui fait vivre la plateforme : détection des nouveaux modules,
 mise à jour des états en ligne / hors ligne, ouverture et fermeture des alertes.
 
+⚠️ Cron ne descend pas sous la minute : cette installation a donc une
+fraîcheur d'environ 60 s, contre 20-30 s pour le déploiement Docker (qui
+boucle directement sur `spiderhome:sync` sans passer par cron). Pour
+s'aligner sur le même objectif (cahier §11 : état visible sous 30 s), un
+service systemd avec la même boucle que `docker-compose.yml` est
+recommandé en lieu et place du cron :
+
+```ini
+# /etc/systemd/system/spiderhome-sync.service
+[Unit]
+Description=SpiderHome Fleet Monitor — synchronisation continue
+After=network.target mysql.service
+
+[Service]
+User=www-data
+WorkingDirectory=/opt/PROJET/spiderhome-fleet-monitor/back
+ExecStart=/bin/sh -c 'while true; do php artisan spiderhome:sync --quiet-log; sleep 20; done'
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now spiderhome-sync
+```
+
 ---
 
 ## 5. Frontend
@@ -218,3 +245,10 @@ administrateur créé et connecté une première fois :
 | Lecture seule | `INSERT` dans `heap_logs` avec `spiderhome_ro` | refus MySQL |
 | Synchronisation | `php artisan spiderhome:sync` | compteurs non nuls au premier passage |
 | Nouveau module | configurer une carte, attendre 2 min | apparaît seule dans « Modules » |
+| Argon2id disponible | `docker compose exec api php -r "var_dump(defined('PASSWORD_ARGON2ID'));"` | `bool(true)` — sinon voir note ci-dessous |
+
+Si Argon2id n'est pas disponible (image PHP compilée sans libargon2, cas rare
+avec l'image officielle `php:8.2-fpm-alpine` utilisée ici) : `HASH_DRIVER=bcrypt`
+dans `.env.docker` en attendant de reconstruire l'image PHP avec le support
+Argon2. Les mots de passe déjà en base ne sont jamais affectés par ce
+réglage, quel que soit l'algorithme choisi.

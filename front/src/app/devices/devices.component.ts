@@ -12,13 +12,14 @@ import { ConfirmModalComponent } from '../shared/components/confirm-modal/confir
 import { ButtonComponent } from '../shared/components/button/button.component';
 import { IconComponent } from '../shared/components/icon/icon.component';
 import { DeviceHealthModalComponent } from './device-health-modal.component';
+import { QrScannerComponent } from '../shared/components/qr-scanner/qr-scanner.component';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
 @Component({
   selector: 'app-devices',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule, RouterLink, ModalComponent, ConfirmModalComponent, ButtonComponent, IconComponent, DeviceHealthModalComponent],
+  imports: [CommonModule, DatePipe, FormsModule, RouterLink, ModalComponent, ConfirmModalComponent, ButtonComponent, IconComponent, DeviceHealthModalComponent, QrScannerComponent],
   template: `
     <!-- Header —— Supervision uniquement, pas de création manuelle -->
     <div class="page-header fade-up">
@@ -27,11 +28,22 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
         <p class="page-sub">Registre de supervision du parc — les modules apparaissent automatiquement lors de leur première communication</p>
       </div>
       <div class="header-actions">
+        <app-button variant="secondary" size="md" iconName="qr-code" (btnClick)="openScanner()" *ngIf="auth.canManageFleet()">
+          Scanner un module
+        </app-button>
         <app-button variant="secondary" size="md" iconName="refresh" [isLoading]="refreshing" (btnClick)="refresh()">
           Actualiser
         </app-button>
       </div>
     </div>
+
+    <div class="popup-banner-error" *ngIf="scanError" style="margin-bottom: 1rem;">
+      <app-icon name="warning" [size]="16"></app-icon>
+      <span>{{ scanError }}</span>
+      <button type="button" (click)="scanError = ''" style="margin-left:auto;background:none;border:none;cursor:pointer;color:inherit;">✕</button>
+    </div>
+
+    <app-qr-scanner [isOpen]="showScanner" (closed)="showScanner = false" (scanned)="onScanned($event)"></app-qr-scanner>
 
     <!-- Multi-Filter Bar -->
     <div class="filter-bar fade-up">
@@ -510,6 +522,8 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 })
 export class DevicesComponent implements OnInit {
   devices: Device[] = []; allCustomers: Customer[] = [];
+  showScanner = false;
+  scanError = '';
   allSites: Site[] = []; filteredSites: Site[] = [];
   formSites: Site[] = []; allModels: DeviceModel[] = [];
   loading = false; refreshing = false; hasError = false; saving = false; showModal = false;
@@ -709,6 +723,49 @@ export class DevicesComponent implements OnInit {
   }
 
   closeModal() { this.showModal = false; this.saving = false; this.cdr.markForCheck(); }
+
+  // ── Scan QR — cahier §7.1 « rattacher une carte au client et au site » ──
+
+  openScanner(): void {
+    this.showScanner = true;
+    this.scanError = '';
+    this.cdr.markForCheck();
+  }
+
+  onScanned(rawValue: string): void {
+    this.showScanner = false;
+    let serial: string | null = null;
+
+    try {
+      const payload = JSON.parse(rawValue);
+      serial = payload.spdr || null; // format encodé par DeviceController::qr()
+    } catch {
+      serial = rawValue.trim() || null; // QR non-standard : on tente le texte brut tel quel
+    }
+
+    if (!serial) {
+      this.scanError = 'QR non reconnu.';
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.deviceService.getAll({ search: serial, per_page: 5 }).subscribe({
+      next: (res: any) => {
+        const list: Device[] = res.data ?? res;
+        const match = list.find(d => d.serial_number === serial) || list[0];
+        if (match) {
+          this.openEdit(match);
+        } else {
+          this.scanError = `Aucun module ne correspond à « ${serial} ».`;
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.scanError = 'Recherche du module scanné impossible.';
+        this.cdr.markForCheck();
+      }
+    });
+  }
 
   /** "2026-09-15T00:00:00.000000Z" (JSON Laravel) → "2026-09-15" (input date HTML). */
   private toDateInput(value?: string | null): string | null {
