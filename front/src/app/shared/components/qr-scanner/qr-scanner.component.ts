@@ -1,6 +1,5 @@
 import { Component, EventEmitter, Input, Output, OnDestroy, OnChanges, ViewChild, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ButtonComponent } from '../button/button.component';
 import { IconComponent } from '../icon/icon.component';
 
 // BarcodeDetector n'est pas encore dans les types TypeScript standard (API récente, Chrome/Edge).
@@ -24,7 +23,7 @@ declare global {
 @Component({
   selector: 'app-qr-scanner',
   standalone: true,
-  imports: [CommonModule, ButtonComponent, IconComponent],
+  imports: [CommonModule, IconComponent],
   template: `
     <div class="scanner-overlay" *ngIf="isOpen" (click)="close()">
       <div class="scanner-box" (click)="$event.stopPropagation()">

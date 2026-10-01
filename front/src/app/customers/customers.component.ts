@@ -248,7 +248,7 @@ import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
 
     <!-- Anonymisation RGPD (§10) -->
     <app-confirm-modal [isOpen]="showAnonymizeModal" title="Effacer les données personnelles"
-      [message]="'Effacer définitivement le nom, l\'e-mail, le téléphone, l\'adresse et le SIRET de « ' + (anonymizingCustomer?.name || '') + ' » ?'"
+      [message]="'Effacer définitivement nom, e-mail, téléphone, adresse et SIRET de « ' + (anonymizingCustomer?.name || '') + ' » ?'"
       subMessage="Irréversible. Les sites, modules et l'historique technique sont conservés — seules les données personnelles sont effacées."
       confirmText="Effacer définitivement" cancelText="Annuler" type="danger"
       [loading]="anonymizing" (confirm)="executeAnonymize()" (cancel)="showAnonymizeModal = false">
